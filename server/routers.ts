@@ -66,7 +66,7 @@ export const appRouter = router({
     search: protectedProcedure.input(z.object({ query: z.string().default("") })).query(async ({ input }) => {
       const rows = await listProducts();
       const q = input.query.trim().toLowerCase();
-      return q ? rows.filter(p => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) : rows;
+      return q ? rows.filter((p: any) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) : rows;
     }),
   }),
 });

@@ -28,7 +28,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
-async function startServer() {
+export async function startServer() {
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -58,9 +58,15 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, () => resolve());
   });
+  const actualPort = (server.address() as net.AddressInfo).port;
+  console.log(`Server running on http://localhost:${actualPort}/`);
+  return { app, server, port: actualPort };
 }
 
-startServer().catch(console.error);
+if (process.env.ELECTRON_MAIN_PROCESS !== "1") {
+  startServer().catch(console.error);
+}

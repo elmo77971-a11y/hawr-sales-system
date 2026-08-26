@@ -1,0 +1,59 @@
+name: Build Hawr Gallery for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "client/**"
+      - "server/**"
+      - "shared/**"
+      - "drizzle/**"
+      - "electron/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/windows-desktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify project
+        run: pnpm check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build Windows installer
+        run: pnpm desktop:build
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: HawrGallery-Windows-Installer
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30

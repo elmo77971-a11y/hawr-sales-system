@@ -13,7 +13,7 @@
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "desktop:dev": "pnpm build && electron .",
-    "desktop:build": "pnpm build && electron-builder --win --x64",
+    "desktop:build": "pnpm build && electron-builder --win --x64 --publish never",
     "desktop:dir": "pnpm build && electron-builder --win --x64 --dir"
   },
   "dependencies": {

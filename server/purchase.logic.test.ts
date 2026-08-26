@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { purchaseRemovalDelta, purchaseStockDelta } from "../shared/purchaseFlow";
+import { purchaseRemovalDelta, purchaseStockDelta, purchaseUnitPrice } from "../shared/purchaseFlow";
 
 describe("purchase stock flow", () => {
   it("increases stock when an existing item receives more quantity", () => {
@@ -17,5 +17,13 @@ describe("purchase stock flow", () => {
   it("rejects invalid purchase quantities", () => {
     expect(() => purchaseStockDelta(5, -1)).toThrow();
     expect(() => purchaseRemovalDelta(0)).toThrow();
+  });
+
+  it("uses the product selling price for a return supply movement and increases stock", () => {
+    const quantity = 2;
+    const unitPrice = purchaseUnitPrice("return", "275.00", "120.00");
+    expect(unitPrice).toBe("275.00");
+    expect(Number(unitPrice) * quantity).toBe(550);
+    expect(purchaseStockDelta(5, 5 + quantity)).toBe(quantity);
   });
 });

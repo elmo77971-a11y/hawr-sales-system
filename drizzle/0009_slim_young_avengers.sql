@@ -1,0 +1,1 @@
+ALTER TABLE `purchases` ADD `movementType` enum('purchase','return') DEFAULT 'purchase' NOT NULL;

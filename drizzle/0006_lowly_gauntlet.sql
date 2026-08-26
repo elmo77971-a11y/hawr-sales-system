@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `unit` varchar(40) DEFAULT 'قطعة' NOT NULL;

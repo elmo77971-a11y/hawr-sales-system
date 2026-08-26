@@ -28,7 +28,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
-export async function startServer() {
+export async function startServer(options: { host?: string; pairingToken?: string } = {}) {
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -36,6 +36,19 @@ export async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  const isLoopback = (req: express.Request) => {
+    const address = req.socket.remoteAddress || "";
+    return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+  };
+  app.get("/__desktop/pair", (req, res) => {
+    if (!options.pairingToken || req.query.token !== options.pairingToken) return res.status(401).send("رمز الربط غير صحيح أو منتهي");
+    res.setHeader("Set-Cookie", "hawr_pair=approved; Max-Age=2592000; Path=/; SameSite=Lax");
+    res.redirect("/");
+  });
+  app.use("/api/trpc", (req, res, next) => {
+    if (!options.pairingToken || isLoopback(req) || req.headers.cookie?.includes("hawr_pair=approved")) return next();
+    return res.status(401).json({ error: "يلزم فتح رابط الربط من الهاتف أولًا" });
+  });
   // tRPC API
   app.use(
     "/api/trpc",
@@ -60,7 +73,7 @@ export async function startServer() {
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, () => resolve());
+    server.listen(port, options.host || undefined, () => resolve());
   });
   const actualPort = (server.address() as net.AddressInfo).port;
   console.log(`Server running on http://localhost:${actualPort}/`);

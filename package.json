@@ -14,7 +14,8 @@
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "desktop:dev": "pnpm build && electron .",
     "desktop:build": "pnpm build && electron-builder --win --x64 --publish never",
-    "desktop:dir": "pnpm build && electron-builder --win --x64 --dir"
+    "desktop:dir": "pnpm build && electron-builder --win --x64 --dir",
+    "assets:build": "python3 scripts/build-icon.py"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
@@ -121,11 +122,12 @@
     "appId": "com.hawr.gallery",
     "productName": "معرض حور للأدوات المنزلية",
     "asar": true,
+    "icon": "assets/hawr-icon.ico",
     "directories": { "output": "release" },
-    "files": ["dist/**/*", "electron/**/*", "package.json", "node_modules/**/*"],
+    "files": ["dist/**/*", "electron/**/*", "assets/**/*", "package.json", "node_modules/**/*"],
     "extraMetadata": { "main": "electron/main.cjs" },
     "npmRebuild": true,
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "artifactName": "HawrGallery-Setup-${version}.${ext}" },
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "artifactName": "HawrGallery-Setup-${version}.${ext}", "signAndEditExecutable": true },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "معرض حور" }
   },
   "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af",

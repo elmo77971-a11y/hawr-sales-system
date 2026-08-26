@@ -12,7 +12,7 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => { ctx.res.clearCookie(COOKIE_NAME, { ...getSessionCookieOptions(ctx.req), maxAge: -1 }); return { success: true } as const; }),
   }),
   sales: router({
-    create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), customerId: z.number().int().positive().optional(), paidAmount: z.string(), paymentMethod: z.enum(["cash", "card", "transfer", "installment"]), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input }) => createSale(input)),
+    create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), customerId: z.number().int().positive().optional(), paidAmount: z.string(), paymentMethod: z.enum(["cash", "card", "transfer", "installment"]), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input, ctx }) => createSale({ ...input, sellerId: ctx.user.id })),
   }),
   purchases: router({
     create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), supplierId: z.number().int().positive().optional(), paidAmount: z.string(), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input }) => createPurchase(input)),
@@ -24,7 +24,7 @@ export const appRouter = router({
   inventory: router({
     adjust: protectedProcedure.input(z.object({ productId: z.number().int().positive(), quantity: z.number().int(), note: z.string().optional() })).mutation(({ input }) => adjustInventory(input)),
   }),
-  reports: router({ summary: protectedProcedure.query(() => getReportSummary()) }),
+  reports: router({ summary: protectedProcedure.input(z.object({ from: z.string().optional(), to: z.string().optional(), sellerId: z.number().int().positive().optional() }).optional()).query(({ input }) => getReportSummary({ from: input?.from ? new Date(`${input.from}T00:00:00`) : undefined, to: input?.to ? new Date(`${input.to}T23:59:59.999`) : undefined, sellerId: input?.sellerId })) }),
   sync: router({
     push: protectedProcedure.input(z.object({ operations: z.array(z.object({ id: z.string(), type: z.string(), payload: z.unknown(), createdAt: z.number() })) })).mutation(async ({ input }) => ({ accepted: await recordSyncOperations(input.operations), syncedAt: Date.now() })),
   }),

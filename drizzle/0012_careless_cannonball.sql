@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `location` varchar(120) DEFAULT 'المخزن' NOT NULL;

@@ -12,6 +12,10 @@ export function exportReportToExcel(rows: ReportRow[], filename = "تقرير-م
   XLSX.writeFile(workbook, filename);
 }
 
+export function exportProductsToExcel(products: Array<{ name: string; sku: string; barcode?: string | null; unit?: string; stockQty: number; salePrice: string; minStock?: number }>, filename = "منتجات-معرض-حور.xlsx") { const rows = products.map(product => ({ "اسم المنتج": product.name, "الكود": product.sku, "الباركود": product.barcode || "", "الوحدة": product.unit || "قطعة", "العدد": product.stockQty, "السعر": product.salePrice, "الحد الأدنى": product.minStock || 0 })); const sheet = XLSX.utils.json_to_sheet(rows); sheet["!cols"] = [{ wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }]; const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, "المنتجات"); XLSX.writeFile(workbook, filename); }
+
+export async function importProductsFromExcel(file: File) { const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" }); const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""]; const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "" }); return rows.map((row, index) => ({ rowNumber: index + 2, name: String(row["اسم المنتج"] || row.name || "").trim(), sku: String(row["الكود"] || row.sku || "").trim(), barcode: String(row["الباركود"] || row.barcode || "").trim() || undefined, unit: String(row["الوحدة"] || row.unit || "قطعة").trim(), stockQty: Number(row["العدد"] || row.stockQty || 0), salePrice: String(row["السعر"] || row.salePrice || "0").trim(), minStock: Number(row["الحد الأدنى"] || row.minStock || 0) })).filter(row => row.name || row.sku); }
+
 export async function exportReportToPdf(rows: ReportRow[], filename = "تقرير-معرض-حور.pdf") {
   const container = document.createElement("section");
   container.dir = "rtl";

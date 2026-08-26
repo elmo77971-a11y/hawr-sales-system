@@ -50,6 +50,13 @@
       "when": 1787761678897,
       "tag": "0006_lowly_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787763177453,
+      "tag": "0007_uneven_taskmaster",
+      "breakpoints": true
     }
   ]
 }

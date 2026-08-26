@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { purchaseRemovalDelta, purchaseStockDelta, purchaseUnitPrice } from "../shared/purchaseFlow";
+import { purchaseLocation, purchaseRemovalDelta, purchaseStockDelta, purchaseUnitPrice } from "../shared/purchaseFlow";
 
 describe("purchase stock flow", () => {
+  it("keeps independent locations for different supply lines", () => {
+    expect([purchaseLocation("المعرض"), purchaseLocation("المكتبة")]).toEqual(["المعرض", "المكتبة"]);
+  });
   it("increases stock when an existing item receives more quantity", () => {
     expect(purchaseStockDelta(5, 8)).toBe(3);
   });

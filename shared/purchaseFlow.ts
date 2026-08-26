@@ -19,3 +19,7 @@ export function purchaseUnitPrice(movementType: PurchaseMovementType | undefined
 export function purchaseMovementLabel(movementType: PurchaseMovementType | undefined) {
   return movementType === "return" ? "توريد مرتجع" : "توريد عادي";
 }
+
+export function purchaseLocation(location?: string | null) {
+  return location?.trim() || "المخزن";
+}

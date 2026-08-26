@@ -15,6 +15,20 @@
       "when": 1787757235211,
       "tag": "0001_dusty_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787757661705,
+      "tag": "0002_striped_richard_fisk",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787757871009,
+      "tag": "0003_amusing_penance",
+      "breakpoints": true
     }
   ]
 }

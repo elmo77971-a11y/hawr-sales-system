@@ -1,0 +1,12 @@
+{
+  "name": "أروساين | نظام إدارة المعرض",
+  "short_name": "أروساين",
+  "description": "نظام إدارة مبيعات ومخزون معرض أجهزة العروسين",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f7f5",
+  "theme_color": "#dc2626",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": []
+}

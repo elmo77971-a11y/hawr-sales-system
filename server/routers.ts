@@ -3,10 +3,15 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { adjustInventory, createCategory, createCustomer, createExpense, createProduct, getSaleDetails, listSales, listPurchaseItems, updatePurchaseItem, deletePurchaseItem, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations } from "./db";
+import { adjustInventory, createCategory, createCustomer, createEmployee, createExpense, createProduct, getDailySummary, getSaleDetails, listEmployees, listSales, updateEmployee, listPurchaseItems, updatePurchaseItem, deletePurchaseItem, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
+  employees: router({
+    list: protectedProcedure.query(() => listEmployees()),
+    create: adminProcedure.input(z.object({ name: z.string().min(2).max(180), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40), role: z.enum(["user", "admin"]).default("user") })).mutation(({ input }) => createEmployee({ ...input, email: input.email || undefined })),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).max(180).optional(), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40).optional(), role: z.enum(["user", "admin"]).optional(), isActive: z.boolean().optional() })).mutation(({ input }) => { const { id, ...data } = input; return updateEmployee(id, { ...data, email: data.email || undefined }); }),
+  }),
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => { ctx.res.clearCookie(COOKIE_NAME, { ...getSessionCookieOptions(ctx.req), maxAge: -1 }); return { success: true } as const; }),
@@ -14,7 +19,7 @@ export const appRouter = router({
   sales: router({
     list: protectedProcedure.query(() => listSales()),
     details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getSaleDetails(input.id)),
-    create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), customerId: z.number().int().positive().optional(), customerName: z.string().max(180).optional(), sellerCode: z.string().max(40).optional(), paidAmount: z.string(), paymentMethod: z.enum(["cash", "card", "transfer", "installment"]), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input, ctx }) => createSale({ ...input, sellerId: ctx.user.id, sellerCode: input.sellerCode || String(ctx.user.id) })),
+    create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), customerId: z.number().int().positive().optional(), customerName: z.string().max(180).optional(), sellerId: z.number().int().positive().optional(), sellerCode: z.string().max(40).optional(), paidAmount: z.string(), paymentMethod: z.enum(["cash", "card", "transfer", "installment"]), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input, ctx }) => createSale({ ...input, sellerId: ctx.user.id, sellerCode: input.sellerCode || String(ctx.user.id) })),
   }),
   purchases: router({
     list: protectedProcedure.query(() => listPurchaseItems()),
@@ -28,6 +33,9 @@ export const appRouter = router({
   }),
   inventory: router({
     adjust: protectedProcedure.input(z.object({ productId: z.number().int().positive(), quantity: z.number().int(), note: z.string().optional() })).mutation(({ input }) => adjustInventory(input)),
+  }),
+  dashboard: router({
+    dailySummary: protectedProcedure.input(z.object({ from: z.coerce.date(), to: z.coerce.date() })).query(({ input }) => getDailySummary(input)),
   }),
   reports: router({ summary: protectedProcedure.input(z.object({ from: z.string().optional(), to: z.string().optional(), sellerId: z.number().int().positive().optional() }).optional()).query(({ input }) => getReportSummary({ from: input?.from ? new Date(`${input.from}T00:00:00`) : undefined, to: input?.to ? new Date(`${input.to}T23:59:59.999`) : undefined, sellerId: input?.sellerId })) }),
   sync: router({

@@ -1,28 +1,18 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, decimal, varchar, boolean } from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  id: int("id").autoincrement().primaryKey(), openId: varchar("openId", { length: 64 }).notNull().unique(), name: text("name"), email: varchar("email", { length: 320 }), loginMethod: varchar("loginMethod", { length: 64 }), role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(), lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
+
+export const categories = mysqlTable("categories", { id: int("id").autoincrement().primaryKey(), name: varchar("name", { length: 120 }).notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const products = mysqlTable("products", { id: int("id").autoincrement().primaryKey(), categoryId: int("categoryId"), name: varchar("name", { length: 180 }).notNull(), sku: varchar("sku", { length: 80 }).notNull().unique(), salePrice: decimal("salePrice", { precision: 12, scale: 2 }).notNull(), costPrice: decimal("costPrice", { precision: 12, scale: 2 }).default("0").notNull(), stockQty: int("stockQty").default(0).notNull(), minStock: int("minStock").default(0).notNull(), isActive: boolean("isActive").default(true).notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull() });
+export const customers = mysqlTable("customers", { id: int("id").autoincrement().primaryKey(), name: varchar("name", { length: 180 }).notNull(), phone: varchar("phone", { length: 32 }), address: text("address"), outstandingBalance: decimal("outstandingBalance", { precision: 12, scale: 2 }).default("0").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const suppliers = mysqlTable("suppliers", { id: int("id").autoincrement().primaryKey(), name: varchar("name", { length: 180 }).notNull(), phone: varchar("phone", { length: 32 }), balance: decimal("balance", { precision: 12, scale: 2 }).default("0").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const sales = mysqlTable("sales", { id: int("id").autoincrement().primaryKey(), invoiceNo: varchar("invoiceNo", { length: 40 }).notNull().unique(), customerId: int("customerId"), subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(), paidAmount: decimal("paidAmount", { precision: 12, scale: 2 }).default("0").notNull(), paymentMethod: mysqlEnum("paymentMethod", ["cash", "card", "transfer", "installment"]).default("cash").notNull(), status: mysqlEnum("status", ["paid", "partial", "unpaid"]).default("paid").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const saleItems = mysqlTable("saleItems", { id: int("id").autoincrement().primaryKey(), saleId: int("saleId").notNull(), productId: int("productId").notNull(), quantity: int("quantity").notNull(), unitPrice: decimal("unitPrice", { precision: 12, scale: 2 }).notNull() });
+export const purchases = mysqlTable("purchases", { id: int("id").autoincrement().primaryKey(), invoiceNo: varchar("invoiceNo", { length: 40 }).notNull().unique(), supplierId: int("supplierId"), total: decimal("total", { precision: 12, scale: 2 }).notNull(), paidAmount: decimal("paidAmount", { precision: 12, scale: 2 }).default("0").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const expenses = mysqlTable("expenses", { id: int("id").autoincrement().primaryKey(), title: varchar("title", { length: 180 }).notNull(), category: varchar("category", { length: 100 }).notNull(), amount: decimal("amount", { precision: 12, scale: 2 }).notNull(), notes: text("notes"), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const inventoryMovements = mysqlTable("inventoryMovements", { id: int("id").autoincrement().primaryKey(), productId: int("productId").notNull(), type: mysqlEnum("type", ["purchase", "sale", "adjustment"]).notNull(), quantity: int("quantity").notNull(), referenceId: int("referenceId"), note: text("note"), createdAt: timestamp("createdAt").defaultNow().notNull() });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-
-// TODO: Add your tables here

@@ -2,8 +2,8 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { adjustInventory, createCategory, createCustomer, createExpense, createProduct, listPurchaseItems, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations } from "./db";
+import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { adjustInventory, createCategory, createCustomer, createExpense, createProduct, listPurchaseItems, updatePurchaseItem, deletePurchaseItem, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -16,6 +16,8 @@ export const appRouter = router({
   }),
   purchases: router({
     list: protectedProcedure.query(() => listPurchaseItems()),
+    updateItem: adminProcedure.input(z.object({ id: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).mutation(({ input }) => updatePurchaseItem(input.id, { quantity: input.quantity, unitPrice: input.unitPrice })),
+    deleteItem: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deletePurchaseItem(input.id)),
     create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), supplierId: z.number().int().positive().optional(), paidAmount: z.string(), items: z.array(z.object({ productId: z.number().int().positive().optional(), quantity: z.number().int().positive(), unitPrice: z.string(), product: z.object({ name: z.string().min(2), sku: z.string().min(1), barcode: z.string().optional(), unit: z.string().optional(), salePrice: z.string().optional(), minStock: z.number().int().nonnegative().optional() }).optional() })).min(1) })).mutation(({ input }) => createPurchase(input)),
   }),
   installments: router({

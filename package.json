@@ -6,7 +6,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && esbuild server/desktop-server.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/desktop-server.js",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
@@ -15,6 +15,8 @@
     "desktop:dev": "pnpm build && electron .",
     "desktop:build": "pnpm build && electron-builder --win --x64 --publish never",
     "desktop:dir": "pnpm build && electron-builder --win --x64 --dir",
+    "desktop:verify": "node scripts/verify-desktop-build.mjs",
+    "desktop:smoke": "node scripts/smoke-desktop-server.mjs",
     "assets:build": "python3 scripts/build-icon.py"
   },
   "dependencies": {

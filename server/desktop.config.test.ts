@@ -20,6 +20,7 @@ describe("Windows desktop packaging", () => {
     const main = read("electron/main.cjs");
     const setup = read("electron/setup.html");
     const server = read("server/_core/index.ts");
+    const desktopServer = read("server/desktop-server.ts");
     expect(setup).toContain("completeSetup");
     expect(main).toContain("setupComplete");
     expect(main).toContain("/__desktop/pair");
@@ -27,7 +28,13 @@ describe("Windows desktop packaging", () => {
     expect(main).toContain("showStartupError");
     expect(read("electron/loading.html")).toContain("جارٍ تشغيل النظام المحلي");
     expect(main).toContain("mainWindow.show()");
+    expect(main).toContain('dist", "desktop-server.js');
+    expect(desktopServer).toContain("startDesktopServer");
+    expect(desktopServer).toContain('import { serveStatic } from "./_core/static"');
+    expect(desktopServer).not.toContain('from "vite"');
     expect(server).toContain("hawr_pair=approved");
     expect(server).toContain("يلزم فتح رابط الربط");
+    expect(server).toContain('import { serveStatic } from "./static"');
+    expect(server).toContain('const { setupVite } = await import("./vite")');
   });
 });

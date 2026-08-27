@@ -63,6 +63,12 @@ jobs:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
+      - name: Verify desktop production bundle
+        run: pnpm desktop:verify
+
+      - name: Smoke test desktop server
+        run: pnpm desktop:smoke
+
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:

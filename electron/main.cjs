@@ -37,11 +37,11 @@ async function startLocalServer() {
   process.env.ELECTRON_MAIN_PROCESS = "1";
   pairingToken = crypto.randomBytes(18).toString("base64url");
   lanHost = localIPv4();
-  const bundledServer = path.join(app.getAppPath(), "dist", "index.js");
-  if (!fs.existsSync(bundledServer)) throw new Error(`ملف تشغيل الخادم غير موجود: ${bundledServer}`);
+  const bundledServer = path.join(app.getAppPath(), "dist", "desktop-server.js");
+  if (!fs.existsSync(bundledServer)) throw new Error(`ملف تشغيل الخادم المحلي غير موجود: ${bundledServer}`);
   const serverModule = await import(pathToFileURL(bundledServer).href);
-  if (typeof serverModule.startServer !== "function") throw new Error("تعذر العثور على startServer داخل حزمة البرنامج");
-  localServer = await serverModule.startServer({ host: "0.0.0.0", pairingToken });
+  if (typeof serverModule.startDesktopServer !== "function") throw new Error("تعذر العثور على startDesktopServer داخل حزمة البرنامج");
+  localServer = await serverModule.startDesktopServer({ host: "0.0.0.0", pairingToken });
   return localServer.port;
 }
 

@@ -9,5 +9,7 @@ describe("employee administration access", () => {
     expect(routers).toContain("list: adminProcedure.query(() => listEmployees())");
     expect(routers).toContain("create: adminProcedure.input");
     expect(routers).toContain("update: adminProcedure.input");
+    expect(routers).toContain("resetCode: adminProcedure.input");
+    expect(routers).toContain("localAudit: adminProcedure");
   });
 });

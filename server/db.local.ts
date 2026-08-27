@@ -36,7 +36,12 @@ function getLocalDb() {
     CREATE TABLE IF NOT EXISTS localSessions (
       tokenHash TEXT PRIMARY KEY, userId INTEGER NOT NULL, createdAt TEXT NOT NULL, expiresAt TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS localAuthEvents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, userId INTEGER, eventType TEXT NOT NULL,
+      name TEXT, employeeCode TEXT, success INTEGER NOT NULL DEFAULT 1, reason TEXT, createdAt TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_localSessions_expiresAt ON localSessions(expiresAt);
+    CREATE INDEX IF NOT EXISTS idx_localAuthEvents_createdAt ON localAuthEvents(createdAt);
     CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, createdAt TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT, categoryId INTEGER, location TEXT NOT NULL DEFAULT 'المخزن', name TEXT NOT NULL,
@@ -120,12 +125,25 @@ export async function createLocalManager(input: { name: string; managerCode: str
 
 export async function verifyLocalManagerPassword(password: string) { const auth: any = getLocalDb().prepare("SELECT passwordSalt,passwordHash FROM localAuth WHERE id = 1 LIMIT 1").get(); return Boolean(auth && password.length > 0 && passwordsMatch(password, auth.passwordSalt, auth.passwordHash)); }
 
+function recordAuthEvent(input: { userId?: number; eventType: "login" | "logout"; name?: string; employeeCode?: string; success?: boolean; reason?: string }) {
+  getLocalDb().prepare("INSERT INTO localAuthEvents (userId,eventType,name,employeeCode,success,reason,createdAt) VALUES (?,?,?,?,?,?,?)").run(input.userId ?? null, input.eventType, input.name ?? null, input.employeeCode ?? null, input.success === false ? 0 : 1, input.reason ?? null, now());
+}
+
+export async function listLocalAuthEvents(limit = 200) {
+  const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+  return getLocalDb().prepare("SELECT e.id,e.userId,e.eventType,e.name,e.employeeCode,e.success,e.reason,e.createdAt,u.role FROM localAuthEvents e LEFT JOIN users u ON u.id = e.userId ORDER BY e.createdAt DESC LIMIT ?").all(safeLimit).map((row: any) => ({ ...row, success: Boolean(row.success) }));
+}
+
 export async function loginLocalManager(input: { name: string; managerCode: string; password: string }) {
   const db = getLocalDb();
   const auth: any = db.prepare("SELECT * FROM localAuth WHERE id = 1 LIMIT 1").get();
   if (!auth) throw new Error("لم يتم تسجيل مدير لهذا البرنامج بعد");
   const user: any = db.prepare("SELECT * FROM users WHERE id = ? AND isActive = 1 LIMIT 1").get(auth.managerUserId);
-  if (!matchesLocalManager(user, input.name, input.managerCode) || !passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) throw new Error("اسم المدير أو كوده أو كلمة المرور غير صحيحة");
+  if (!matchesLocalManager(user, input.name, input.managerCode) || !passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) {
+    recordAuthEvent({ eventType: "login", name: input.name, employeeCode: input.managerCode, success: false, reason: "بيانات المدير غير صحيحة" });
+    throw new Error("اسم المدير أو كوده أو كلمة المرور غير صحيحة");
+  }
+  recordAuthEvent({ userId: user.id, eventType: "login", name: user.name, employeeCode: user.employeeCode, success: true });
   const token = createSessionToken();
   const timestamp = now();
   db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), user.id, timestamp, new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString());
@@ -139,7 +157,11 @@ export async function loginLocalEmployee(input: { name: string; employeeCode: st
   if (name.length < 2 || employeeCode.length < 1) throw new Error("اكتب اسم الموظف وكوده");
   const db = getLocalDb();
   const user: any = db.prepare("SELECT * FROM users WHERE employeeCode = ? AND lower(trim(name)) = lower(trim(?)) AND isActive = 1 LIMIT 1").get(employeeCode, name);
-  if (!matchesLocalEmployee(user, name, employeeCode)) throw new Error("اسم الموظف أو الكود غير صحيح");
+  if (!matchesLocalEmployee(user, name, employeeCode)) {
+    recordAuthEvent({ eventType: "login", name, employeeCode, success: false, reason: "اسم الموظف أو الكود غير صحيح" });
+    throw new Error("اسم الموظف أو الكود غير صحيح");
+  }
+  recordAuthEvent({ userId: user.id, eventType: "login", name: user.name, employeeCode: user.employeeCode, success: true });
   const token = createSessionToken();
   const timestamp = now();
   db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), user.id, timestamp, new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString());
@@ -157,7 +179,15 @@ export async function getLocalUserBySession(token: string | undefined) {
   const { sessionExpiresAt: _sessionExpiresAt, ...user } = row;
   return publicUser(user);
 }
-export async function deleteLocalSession(token: string | undefined) { if (token) getLocalDb().prepare("DELETE FROM localSessions WHERE tokenHash = ?").run(hashSessionToken(token)); }
+export async function logoutLocalUser(token: string | undefined) {
+  if (!token) return;
+  const db = getLocalDb();
+  const sessionHash = hashSessionToken(token);
+  const row: any = db.prepare("SELECT s.userId,u.name,u.employeeCode FROM localSessions s INNER JOIN users u ON u.id = s.userId WHERE s.tokenHash = ? LIMIT 1").get(sessionHash);
+  if (row) recordAuthEvent({ userId: row.userId, eventType: "logout", name: row.name, employeeCode: row.employeeCode, success: true });
+  db.prepare("DELETE FROM localSessions WHERE tokenHash = ?").run(sessionHash);
+}
+export async function deleteLocalSession(token: string | undefined) { await logoutLocalUser(token); }
 
 export async function listEmployees() { return getLocalDb().prepare("SELECT id,name,email,employeeCode,role,isActive,createdAt FROM users ORDER BY createdAt DESC").all().map((row: any) => ({ ...row, isActive: Boolean(row.isActive) })); }
 export async function createEmployee(input: { name: string; email?: string; employeeCode: string; role?: "user" | "admin" }) {
@@ -165,6 +195,17 @@ export async function createEmployee(input: { name: string; email?: string; empl
   const timestamp = now(); const result = getLocalDb().prepare(`INSERT INTO users (openId,name,email,employeeCode,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,1,'employee-code',?,?,?)`).run(`employee-${input.employeeCode}-${Date.now()}`, input.name, input.email || null, input.employeeCode, input.role || "user", timestamp, timestamp, timestamp);
   return { success: true, id: Number(result.lastInsertRowid) };
 }
+export async function resetEmployeeCode(id: number) {
+  const db = getLocalDb();
+  const user: any = db.prepare("SELECT id,role FROM users WHERE id = ? LIMIT 1").get(id);
+  if (!user) throw new Error("الموظف غير موجود");
+  if (user.role === "admin") throw new Error("لا يمكن إعادة تعيين code المدير من شاشة الموظفين");
+  let newCode = "";
+  do { newCode = `EMP-${crypto.randomBytes(3).toString("hex").toUpperCase()}`; } while (db.prepare("SELECT id FROM users WHERE employeeCode = ? LIMIT 1").get(newCode));
+  db.prepare("UPDATE users SET employeeCode = ?, updatedAt = ? WHERE id = ?").run(newCode, now(), id);
+  return { success: true, employeeCode: newCode };
+}
+
 export async function updateEmployee(id: number, input: { name?: string; email?: string; employeeCode?: string; role?: "user" | "admin"; isActive?: boolean }) {
   const fields: string[] = []; const values: unknown[] = [];
   for (const key of ["name", "email", "employeeCode", "role"] as const) if (input[key] !== undefined) { fields.push(`${key} = ?`); values.push(input[key] || null); }

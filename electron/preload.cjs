@@ -16,4 +16,5 @@ contextBridge.exposeInMainWorld("hawrDesktop", {
   showPairing: () => ipcRenderer.invoke("desktop-show-pairing"),
   backupDatabase: () => ipcRenderer.invoke("desktop-backup-database"),
   restoreDatabase: () => ipcRenderer.invoke("desktop-restore-database"),
+  resetDatabase: () => ipcRenderer.invoke("desktop-reset-database"),
 });

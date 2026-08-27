@@ -93,6 +93,7 @@ ipcMain.handle("desktop-network-info", () => ({ host: lanHost, port: localServer
 ipcMain.handle("desktop-show-pairing", () => showPhoneLink());
 ipcMain.handle("desktop-backup-database", async () => { try { return await backupDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 ipcMain.handle("desktop-restore-database", async () => { try { return await restoreDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
+ipcMain.handle("desktop-reset-database", async () => { try { return await resetDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 
 function isSQLiteDatabase(filename) { try { return fs.readFileSync(filename).subarray(0, 16).toString("utf8") === "SQLite format 3\\u0000"; } catch { return false; } }
 function checkpointDatabase() { try { const BetterSqlite3 = require("better-sqlite3"); const db = new BetterSqlite3(databasePath()); db.pragma("wal_checkpoint(TRUNCATE)"); db.close(); } catch (error) { console.warn("SQLite checkpoint skipped:", error?.message || error); } }
@@ -104,6 +105,26 @@ async function backupDatabase() {
   fs.copyFileSync(databasePath(), result.filePath);
   return { success: true, filePath: result.filePath };
 }
+async function resetDatabase() {
+  if (!fs.existsSync(databasePath())) { await dialog.showMessageBox(mainWindow, { type: "warning", title: "لا توجد قاعدة بيانات", message: "لا يمكن إعادة الضبط قبل إنشاء قاعدة بيانات." }); return { success: false, error: "لا توجد قاعدة بيانات" }; }
+  const backup = await backupDatabase();
+  if (!backup.success) return { success: false, canceled: Boolean(backup.canceled), error: backup.error || "يجب حفظ نسخة احتياطية أولًا" };
+  const confirm = await dialog.showMessageBox(mainWindow, { type: "warning", buttons: ["إعادة ضبط والبدء من جديد", "إلغاء"], defaultId: 1, cancelId: 1, title: "تأكيد إعادة ضبط النظام", message: "تم حفظ النسخة الاحتياطية بنجاح.", detail: "سيتم حذف الحسابات والمنتجات والفواتير وكل البيانات المحلية، ثم سيظهر معالج إنشاء المدير من جديد. لا يمكن التراجع عن هذه العملية إلا باستخدام النسخة الاحتياطية." });
+  if (confirm.response !== 0) return { success: false, canceled: true, backupPath: backup.filePath };
+  checkpointDatabase();
+  if (localServer?.server) await new Promise(resolve => localServer.server.close(resolve));
+  localServer = null;
+  fs.rmSync(databasePath(), { force: true });
+  fs.rmSync(`${databasePath()}-wal`, { force: true });
+  fs.rmSync(`${databasePath()}-shm`, { force: true });
+  writeSettings({ setupComplete: false, resetAt: new Date().toISOString() });
+  await dialog.showMessageBox(mainWindow, { type: "info", title: "تمت إعادة الضبط", message: "تم حذف البيانات المحلية بعد حفظ النسخة الاحتياطية. سيعاد تشغيل البرنامج لبدء الإعداد من جديد." });
+  isQuitting = true;
+  app.relaunch();
+  app.exit(0);
+  return { success: true, backupPath: backup.filePath, requiresRestart: true };
+}
+
 async function restoreDatabase() {
   const result = await dialog.showOpenDialog(mainWindow, { title: "استعادة نسخة احتياطية", properties: ["openFile"], filters: [{ name: "SQLite Database", extensions: ["sqlite", "db"] }] });
   if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };

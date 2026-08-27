@@ -46,9 +46,15 @@ describe("Windows desktop packaging", () => {
     expect(main).toContain("desktop-local-setup-state");
     expect(main).toContain("desktop-backup-database");
     expect(main).toContain("desktop-restore-database");
+    expect(main).toContain("desktop-reset-database");
+    expect(main).toContain("const backup = await backupDatabase()");
+    expect(main).toContain("app.relaunch()");
     expect(main).toContain("isSQLiteDatabase");
     expect(read("electron/preload.cjs")).toContain("backupDatabase");
     expect(read("electron/preload.cjs")).toContain("restoreDatabase");
+    expect(read("electron/preload.cjs")).toContain("resetDatabase");
+    expect(read("client/src/electron.d.ts")).toContain("resetDatabase?");
+    expect(read("client/src/pages/Home.tsx")).toContain("إعادة ضبط النظام والبدء من جديد");
     expect(main).toContain('dist", "desktop-server.js');
     expect(desktopServer).toContain("startDesktopServer");
     expect(desktopServer).toContain("/__desktop/health");

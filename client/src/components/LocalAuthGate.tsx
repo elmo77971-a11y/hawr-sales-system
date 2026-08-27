@@ -52,9 +52,17 @@ function LocalLogin({ onSuccess }: { onSuccess: () => Promise<void> }) {
 
 export function LocalAuthGate({ children }: { children: React.ReactNode }) {
   const [localRuntime, setLocalRuntime] = useState<boolean | null>(isDesktopBridgeAvailable() ? true : null);
+  const [desktopConfigured, setDesktopConfigured] = useState<boolean | null>(isDesktopBridgeAvailable() ? null : true);
   const utils = trpc.useUtils();
   const status = trpc.auth.localStatus.useQuery(undefined, { enabled: localRuntime === true, retry: false });
   const me = trpc.auth.me.useQuery(undefined, { enabled: localRuntime === true, retry: false, refetchOnWindowFocus: false });
+
+  useEffect(() => {
+    if (localRuntime !== true || !window.hawrDesktop?.getLocalSetupState) return;
+    let active = true;
+    window.hawrDesktop.getLocalSetupState().then(state => { if (active) setDesktopConfigured(state.configured); }).catch(() => { if (active) setDesktopConfigured(null); });
+    return () => { active = false; };
+  }, [localRuntime]);
 
   useEffect(() => {
     if (localRuntime !== null) return;
@@ -63,9 +71,9 @@ export function LocalAuthGate({ children }: { children: React.ReactNode }) {
     return () => { active = false; };
   }, [localRuntime]);
 
-  if (localRuntime === null || (localRuntime && (status.isLoading || me.isLoading))) return <main dir="rtl" className="grid min-h-screen place-items-center bg-[#f7f7f5] text-sm text-slate-500">جارٍ التحقق من تشغيل النظام المحلي...</main>;
+  if (localRuntime === null || (localRuntime && (desktopConfigured === null || status.isLoading || me.isLoading))) return <main dir="rtl" className="grid min-h-screen place-items-center bg-[#f7f7f5] text-sm text-slate-500">جارٍ التحقق من تشغيل النظام المحلي...</main>;
   if (!localRuntime) return <>{children}</>;
-  if (!status.data?.configured) return <ManagerSetup onComplete={async () => { await status.refetch(); await me.refetch(); }} />;
+  if (!status.data?.configured || desktopConfigured === false) return <ManagerSetup onComplete={async () => { setDesktopConfigured(true); await status.refetch(); await me.refetch(); }} />;
   if (!me.data) return <LocalLogin onSuccess={async () => { await utils.auth.me.invalidate(); }} />;
   return <>{children}</>;
 }

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const dbPath = path.join(os.tmpdir(), `hawr-gallery-smoke-${process.pid}.sqlite`);
@@ -10,7 +11,8 @@ process.env.LOCAL_DB_PATH = dbPath;
 process.env.PORT = "0";
 process.env.ELECTRON_MAIN_PROCESS = "1";
 
-const { startDesktopServer } = await import(path.join(root, "dist", "desktop-server.js"));
+const desktopServerUrl = pathToFileURL(path.join(root, "dist", "desktop-server.js")).href;
+const { startDesktopServer } = await import(desktopServerUrl);
 const runtime = await startDesktopServer({ host: "127.0.0.1", pairingToken: "smoke-token" });
 const baseUrl = `http://127.0.0.1:${runtime.port}`;
 

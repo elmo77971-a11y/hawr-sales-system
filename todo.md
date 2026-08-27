@@ -280,3 +280,9 @@
 - [x] إضافة رابط اقتران Wi‑Fi مؤقت مع حماية طلبات الهاتف برمز Cookie محلي
 - [x] إضافة دعم توقيع Windows اختياريًا عبر WIN_CSC_LINK وWIN_CSC_KEY_PASSWORD في GitHub Actions
 - [x] تحديث دليل Windows ونجاح فحص الصياغة وTypeScript والاختبارات
+
+
+## تسليم ملف Windows مباشر
+
+- [x] تسليم ملف تثبيت Windows بصيغة EXE مباشرة للمستخدم، وليس رابط واجهة ويب أو ملفات checkpoint فقط
+- [x] التحقق من أن ملف التثبيت يعمل مستقلًا دون Manus Desktop أو Node.js

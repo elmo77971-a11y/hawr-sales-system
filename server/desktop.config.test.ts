@@ -9,11 +9,16 @@ describe("Windows desktop packaging", () => {
   it("includes the Hawr icon and optional signing configuration", () => {
     const packageJson = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/windows-desktop.yml");
+    expect(packageJson.version).toBe("1.1.0");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
+    expect(packageJson.build.publish.provider).toBe("github");
+    expect(packageJson.build.publish.repo).toBe("hawr-sales-system");
     expect(fs.existsSync(path.join(root, "assets/hawr-icon.ico"))).toBe(true);
     expect(fs.existsSync(path.join(root, "electron/loading.html"))).toBe(true);
     expect(workflow).toContain("WIN_CSC_LINK");
     expect(workflow).toContain("WIN_CSC_KEY_PASSWORD");
+    expect(workflow).toContain("electron-builder --win --x64 --publish always");
+    expect(fs.existsSync(path.join(root, "electron/installer.nsh"))).toBe(true);
   });
 
   it("contains a first-run wizard and secure LAN pairing route", () => {
@@ -28,8 +33,22 @@ describe("Windows desktop packaging", () => {
     expect(main).toContain("showStartupError");
     expect(read("electron/loading.html")).toContain("جارٍ تشغيل النظام المحلي");
     expect(main).toContain("mainWindow.show()");
+    expect(main).toContain("autoUpdater.autoDownload = true");
+    expect(main).toContain("desktop-update-status");
+    expect(main).toContain("desktop-network-info");
     expect(main).toContain('dist", "desktop-server.js');
     expect(desktopServer).toContain("startDesktopServer");
+    expect(desktopServer).toContain("/__desktop/health");
+    expect(desktopServer).toContain("options.port");
+    expect(read("server/_core/context.ts")).toContain("LOCAL_SESSION_COOKIE");
+    expect(read("server/localAuthCrypto.ts")).toContain("timingSafeEqual");
+    const routers = read("server/routers.ts");
+    expect(routers).toContain("adjust: adminProcedure");
+    expect(routers).toContain("transfer: adminProcedure");
+    expect(routers).toContain("createProduct: adminProcedure");
+    expect(routers).toContain("updateProduct: adminProcedure");
+    expect(routers).toContain("deleteProduct: adminProcedure");
+    expect(routers).toContain("create: adminProcedure.input(z.object({ invoiceNo");
     expect(desktopServer).toContain('import { serveStatic } from "./_core/static"');
     expect(desktopServer).not.toContain('from "vite"');
     expect(server).toContain("hawr_pair=approved");

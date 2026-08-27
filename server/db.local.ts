@@ -1,10 +1,16 @@
-import Database from "better-sqlite3";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let DatabaseCtor: any;
+const loadDatabase = () => DatabaseCtor || (DatabaseCtor = require("better-sqlite3"));
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { purchaseRemovalDelta, purchaseStockDelta, purchaseUnitPrice, purchaseLocation } from "../shared/purchaseFlow";
 import { assertEnoughStock, validateTransferLocations } from "../shared/inventory";
+import { LOCAL_SESSION_TTL_MS, createPasswordSalt, createSessionToken, hashPassword, hashSessionToken, passwordsMatch } from "./localAuthCrypto";
 
-let localDb: Database.Database | null = null;
+let localDb: any = null;
 
 const now = () => new Date().toISOString();
 const dbPath = () => process.env.LOCAL_DB_PATH || path.join(process.cwd(), "data", "hawr-gallery.sqlite");
@@ -13,7 +19,7 @@ function getLocalDb() {
   if (localDb) return localDb;
   const filename = dbPath();
   fs.mkdirSync(path.dirname(filename), { recursive: true });
-  localDb = new Database(filename);
+  localDb = new (loadDatabase())(filename);
   localDb.pragma("journal_mode = WAL");
   localDb.pragma("foreign_keys = ON");
   localDb.exec(`
@@ -22,6 +28,14 @@ function getLocalDb() {
       loginMethod TEXT, role TEXT NOT NULL DEFAULT 'user', employeeCode TEXT UNIQUE, isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, lastSignedIn TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS localAuth (
+      id INTEGER PRIMARY KEY CHECK (id = 1), managerUserId INTEGER NOT NULL, managerCode TEXT NOT NULL UNIQUE,
+      passwordHash TEXT NOT NULL, passwordSalt TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS localSessions (
+      tokenHash TEXT PRIMARY KEY, userId INTEGER NOT NULL, createdAt TEXT NOT NULL, expiresAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_localSessions_expiresAt ON localSessions(expiresAt);
     CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, createdAt TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT, categoryId INTEGER, location TEXT NOT NULL DEFAULT 'المخزن', name TEXT NOT NULL,
@@ -51,7 +65,7 @@ function getLocalDb() {
   return localDb;
 }
 
-function transaction<T>(fn: (db: Database.Database) => T): T {
+function transaction<T>(fn: (db: any) => T): T {
   const db = getLocalDb();
   db.exec("BEGIN");
   try { const result = fn(db); db.exec("COMMIT"); return result; }
@@ -74,6 +88,60 @@ export async function upsertUser(user: any): Promise<void> {
     });
 }
 export async function getUserByOpenId(openId: string) { return getLocalDb().prepare("SELECT * FROM users WHERE openId = ? LIMIT 1").get(openId); }
+
+const publicUser = (row: any) => row ? { ...row, isActive: Boolean(row.isActive) } : null;
+
+export async function getLocalAuthStatus() {
+  const row: any = getLocalDb().prepare("SELECT managerCode FROM localAuth WHERE id = 1 LIMIT 1").get();
+  return { configured: Boolean(row), managerCode: row?.managerCode || null };
+}
+
+export async function createLocalManager(input: { name: string; managerCode: string; password: string }) {
+  const name = input.name.trim();
+  const managerCode = input.managerCode.trim();
+  if (name.length < 2) throw new Error("اسم المدير يجب أن يتكون من حرفين على الأقل");
+  if (!/^[A-Za-z0-9_-]{3,40}$/.test(managerCode)) throw new Error("كود المدير يجب أن يكون 3 أحرف أو أرقام على الأقل وبالإنجليزية");
+  if (input.password.length < 6) throw new Error("كلمة المرور يجب ألا تقل عن 6 أحرف");
+  const result = transaction(db => {
+    if (db.prepare("SELECT id FROM localAuth WHERE id = 1").get()) throw new Error("تم تسجيل المدير من قبل");
+    const nowValue = now();
+    const salt = createPasswordSalt();
+    const userResult = db.prepare(`INSERT INTO users (openId,name,email,employeeCode,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,1,'local-password',?,?,?)`).run(`local-manager-${crypto.randomUUID()}`, name, null, managerCode, "admin", nowValue, nowValue, nowValue);
+    const userId = Number(userResult.lastInsertRowid);
+    db.prepare("INSERT INTO localAuth (id,managerUserId,managerCode,passwordHash,passwordSalt,createdAt,updatedAt) VALUES (1,?,?,?,?,?,?)").run(userId, managerCode, hashPassword(input.password, salt), salt, nowValue, nowValue);
+    const token = createSessionToken();
+    const expiresAt = new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString();
+    db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), userId, nowValue, expiresAt);
+    return { token, userId };
+  });
+  return { token: result.token, user: publicUser(await getLocalUserById(result.userId)) };
+}
+
+export async function loginLocalManager(input: { managerCode: string; password: string }) {
+  const db = getLocalDb();
+  const auth: any = db.prepare("SELECT * FROM localAuth WHERE id = 1 LIMIT 1").get();
+  if (!auth) throw new Error("لم يتم تسجيل مدير لهذا البرنامج بعد");
+  const user: any = db.prepare("SELECT * FROM users WHERE id = ? AND isActive = 1 LIMIT 1").get(auth.managerUserId);
+  if (!user || user.employeeCode !== input.managerCode.trim() || !passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) throw new Error("كود المدير أو كلمة المرور غير صحيحة");
+  const token = createSessionToken();
+  const timestamp = now();
+  db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), user.id, timestamp, new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString());
+  db.prepare("UPDATE users SET lastSignedIn = ?, updatedAt = ? WHERE id = ?").run(timestamp, timestamp, user.id);
+  return { token, user: publicUser({ ...user, lastSignedIn: timestamp }) };
+}
+
+export async function getLocalUserById(id: number) { return getLocalDb().prepare("SELECT * FROM users WHERE id = ? AND isActive = 1 LIMIT 1").get(id); }
+export async function getLocalUserBySession(token: string | undefined) {
+  if (!token) return null;
+  const db = getLocalDb();
+  const row: any = db.prepare("SELECT u.* , s.expiresAt AS sessionExpiresAt FROM localSessions s INNER JOIN users u ON u.id = s.userId WHERE s.tokenHash = ? AND u.isActive = 1 LIMIT 1").get(hashSessionToken(token));
+  if (!row) return null;
+  if (new Date(row.sessionExpiresAt).getTime() <= Date.now()) { db.prepare("DELETE FROM localSessions WHERE tokenHash = ?").run(hashSessionToken(token)); return null; }
+  const { sessionExpiresAt: _sessionExpiresAt, ...user } = row;
+  return publicUser(user);
+}
+export async function deleteLocalSession(token: string | undefined) { if (token) getLocalDb().prepare("DELETE FROM localSessions WHERE tokenHash = ?").run(hashSessionToken(token)); }
+
 export async function listEmployees() { return getLocalDb().prepare("SELECT id,name,email,employeeCode,role,isActive,createdAt FROM users ORDER BY createdAt DESC").all().map((row: any) => ({ ...row, isActive: Boolean(row.isActive) })); }
 export async function createEmployee(input: { name: string; email?: string; employeeCode: string; role?: "user" | "admin" }) {
   const timestamp = now(); const result = getLocalDb().prepare(`INSERT INTO users (openId,name,email,employeeCode,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,1,'employee-code',?,?,?)`).run(`employee-${input.employeeCode}-${Date.now()}`, input.name, input.email || null, input.employeeCode, input.role || "user", timestamp, timestamp, timestamp);

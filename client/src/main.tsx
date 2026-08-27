@@ -13,6 +13,7 @@ const queryClient = new QueryClient();
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
+  if ((window as typeof window & { hawrDesktop?: { isDesktop?: boolean } }).hawrDesktop?.isDesktop) return;
 
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
 

@@ -6,9 +6,14 @@ describe("basic permissions", () => {
     expect(can("admin", "reports")).toBe(true);
     expect(can("admin", "settings")).toBe(true);
   });
-  it("limits standard users from reports and settings", () => {
+  it("limits standard users from reports, settings, inventory, and purchases", () => {
     expect(can("user", "sales")).toBe(true);
+    expect(can("user", "customers")).toBe(true);
     expect(can("user", "reports")).toBe(false);
     expect(can("user", "settings")).toBe(false);
+    expect(can("user", "inventory")).toBe(false);
+    expect(can("user", "purchases")).toBe(false);
+    expect(can("admin", "inventory")).toBe(true);
+    expect(can("admin", "purchases")).toBe(true);
   });
 });

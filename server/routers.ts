@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, LOCAL_SESSION_COOKIE } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { adjustInventory, createCategory, createCustomer, createEmployee, createExpense, createProduct, getDailySummary, getSaleDetails, listEmployees, listSales, updateEmployee, listPurchaseItems, updatePurchaseItem, deletePurchaseItem, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, transferInventory, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations } from "./db";
+import { adjustInventory, createCategory, createCustomer, createEmployee, createExpense, createProduct, getDailySummary, getSaleDetails, listEmployees, listSales, updateEmployee, listPurchaseItems, updatePurchaseItem, deletePurchaseItem, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, transferInventory, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations, createLocalManager, deleteLocalSession, getLocalAuthStatus, loginLocalManager } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -14,6 +14,10 @@ export const appRouter = router({
   }),
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    localStatus: publicProcedure.query(() => getLocalAuthStatus()),
+    localRegister: publicProcedure.input(z.object({ name: z.string().min(2).max(180), managerCode: z.string().regex(/^[A-Za-z0-9_-]{3,40}$/), password: z.string().min(6).max(200) })).mutation(({ input, ctx }) => createLocalManager(input).then(result => { ctx.res.cookie(LOCAL_SESSION_COOKIE, result.token, { httpOnly: true, sameSite: "lax", secure: false, path: "/", maxAge: 1000 * 60 * 60 * 24 * 30 }); return result.user; })),
+    localLogin: publicProcedure.input(z.object({ managerCode: z.string().min(3).max(40), password: z.string().min(1).max(200) })).mutation(({ input, ctx }) => loginLocalManager(input).then(result => { ctx.res.cookie(LOCAL_SESSION_COOKIE, result.token, { httpOnly: true, sameSite: "lax", secure: false, path: "/", maxAge: 1000 * 60 * 60 * 24 * 30 }); return result.user; })),
+    localLogout: publicProcedure.mutation(async ({ ctx }) => { const token = ctx.req.headers.cookie?.split(";").map(part => part.trim()).find(part => part.startsWith(`${LOCAL_SESSION_COOKIE}=`))?.slice(LOCAL_SESSION_COOKIE.length + 1); await deleteLocalSession(token); ctx.res.clearCookie(LOCAL_SESSION_COOKIE, { httpOnly: true, sameSite: "lax", secure: false, path: "/", maxAge: 0 }); return { success: true } as const; }),
     logout: publicProcedure.mutation(({ ctx }) => { ctx.res.clearCookie(COOKIE_NAME, { ...getSessionCookieOptions(ctx.req), maxAge: -1 }); return { success: true } as const; }),
   }),
   sales: router({
@@ -25,15 +29,15 @@ export const appRouter = router({
     list: protectedProcedure.query(() => listPurchaseItems()),
     updateItem: adminProcedure.input(z.object({ id: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).mutation(({ input }) => updatePurchaseItem(input.id, { quantity: input.quantity, unitPrice: input.unitPrice })),
     deleteItem: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deletePurchaseItem(input.id)),
-    create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), movementType: z.enum(["purchase", "return"]).default("purchase"), supplierId: z.number().int().positive().optional(), paidAmount: z.string(), items: z.array(z.object({ productId: z.number().int().positive().optional(), quantity: z.number().int().positive(), unitPrice: z.string(), unit: z.string().max(40).optional(), location: z.string().max(120).optional(), product: z.object({ name: z.string().min(2), sku: z.string().min(1), barcode: z.string().optional(), unit: z.string().optional(), location: z.string().max(120).optional(), salePrice: z.string().optional(), minStock: z.number().int().nonnegative().optional() }).optional() })).min(1) })).mutation(({ input }) => createPurchase(input)),
+    create: adminProcedure.input(z.object({ invoiceNo: z.string().min(1), movementType: z.enum(["purchase", "return"]).default("purchase"), supplierId: z.number().int().positive().optional(), paidAmount: z.string(), items: z.array(z.object({ productId: z.number().int().positive().optional(), quantity: z.number().int().positive(), unitPrice: z.string(), unit: z.string().max(40).optional(), location: z.string().max(120).optional(), product: z.object({ name: z.string().min(2), sku: z.string().min(1), barcode: z.string().optional(), unit: z.string().optional(), location: z.string().max(120).optional(), salePrice: z.string().optional(), minStock: z.number().int().nonnegative().optional() }).optional() })).min(1) })).mutation(({ input }) => createPurchase(input)),
   }),
   installments: router({
     list: protectedProcedure.query(() => listInstallments()),
     collect: protectedProcedure.input(z.object({ installmentId: z.number().int().positive(), amount: z.string(), paymentMethod: z.enum(["cash", "card", "transfer"]), note: z.string().optional() })).mutation(({ input }) => recordInstallmentPayment(input)),
   }),
   inventory: router({
-    adjust: protectedProcedure.input(z.object({ productId: z.number().int().positive(), quantity: z.number().int(), note: z.string().optional() })).mutation(({ input }) => adjustInventory(input)),
-    transfer: protectedProcedure.input(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), fromLocation: z.string().min(1).max(120), toLocation: z.string().min(1).max(120), note: z.string().optional() })).mutation(({ input }) => transferInventory(input)),
+    adjust: adminProcedure.input(z.object({ productId: z.number().int().positive(), quantity: z.number().int(), note: z.string().optional() })).mutation(({ input }) => adjustInventory(input)),
+    transfer: adminProcedure.input(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), fromLocation: z.string().min(1).max(120), toLocation: z.string().min(1).max(120), note: z.string().optional() })).mutation(({ input }) => transferInventory(input)),
   }),
   dashboard: router({
     dailySummary: protectedProcedure.input(z.object({ from: z.coerce.date(), to: z.coerce.date() })).query(({ input }) => getDailySummary(input)),
@@ -49,12 +53,12 @@ export const appRouter = router({
     deleteCategory: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteCategory(input.id)),
     products: protectedProcedure.query(() => listProducts()),
     inventoryMovements: protectedProcedure.query(() => listInventoryMovements()),
-    createProduct: protectedProcedure.input(z.object({ name: z.string().min(2), sku: z.string().min(1), barcode: z.string().optional(), unit: z.string().optional(), location: z.string().max(120).optional(), salePrice: z.string(), costPrice: z.string().optional(), stockQty: z.number().int().nonnegative().optional(), minStock: z.number().int().nonnegative().optional(), categoryId: z.number().int().positive().optional() })).mutation(({ input }) => createProduct(input)),
+    createProduct: adminProcedure.input(z.object({ name: z.string().min(2), sku: z.string().min(1), barcode: z.string().optional(), unit: z.string().optional(), location: z.string().max(120).optional(), salePrice: z.string(), costPrice: z.string().optional(), stockQty: z.number().int().nonnegative().optional(), minStock: z.number().int().nonnegative().optional(), categoryId: z.number().int().positive().optional() })).mutation(({ input }) => createProduct(input)),
     createCustomer: protectedProcedure.input(z.object({ name: z.string().min(2), phone: z.string().optional(), address: z.string().optional() })).mutation(({ input }) => createCustomer(input)),
     createSupplier: protectedProcedure.input(z.object({ name: z.string().min(2), phone: z.string().optional() })).mutation(({ input }) => createSupplier(input)),
     createExpense: protectedProcedure.input(z.object({ title: z.string().min(2), category: z.string().min(2), amount: z.string(), notes: z.string().optional() })).mutation(({ input }) => createExpense(input)),
-    updateProduct: protectedProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).optional(), sku: z.string().min(1).optional(), barcode: z.string().optional(), unit: z.string().optional(), location: z.string().max(120).optional(), salePrice: z.string().optional(), costPrice: z.string().optional(), stockQty: z.number().int().nonnegative().optional(), minStock: z.number().int().nonnegative().optional(), categoryId: z.number().int().positive().optional() })).mutation(({ input }) => { const { id, ...changes } = input; return updateProduct(id, changes); }),
-    deleteProduct: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteProduct(input.id)),
+    updateProduct: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).optional(), sku: z.string().min(1).optional(), barcode: z.string().optional(), unit: z.string().optional(), location: z.string().max(120).optional(), salePrice: z.string().optional(), costPrice: z.string().optional(), stockQty: z.number().int().nonnegative().optional(), minStock: z.number().int().nonnegative().optional(), categoryId: z.number().int().positive().optional() })).mutation(({ input }) => { const { id, ...changes } = input; return updateProduct(id, changes); }),
+    deleteProduct: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteProduct(input.id)),
     updateCustomer: protectedProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).optional(), phone: z.string().optional(), address: z.string().optional() })).mutation(({ input }) => { const { id, ...changes } = input; return updateCustomer(id, changes); }),
     deleteCustomer: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteCustomer(input.id)),
     updateSupplier: protectedProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).optional(), phone: z.string().optional() })).mutation(({ input }) => { const { id, ...changes } = input; return updateSupplier(id, changes); }),

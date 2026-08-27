@@ -24,7 +24,7 @@ async function findAvailablePort(startPort = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
-export async function startDesktopServer(options: { host?: string; pairingToken?: string } = {}) {
+export async function startDesktopServer(options: { host?: string; port?: number; pairingToken?: string } = {}) {
   const application = express();
   const server = createServer(application);
   application.use(express.json({ limit: "50mb" }));
@@ -36,6 +36,7 @@ export async function startDesktopServer(options: { host?: string; pairingToken?
     const address = req.socket.remoteAddress || "";
     return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
   };
+  application.get("/__desktop/health", (_req, res) => res.json({ ok: true, service: "hawr-gallery-desktop" }));
   application.get("/__desktop/pair", (req, res) => {
     if (!options.pairingToken || req.query.token !== options.pairingToken) {
       return res.status(401).send("رمز الربط غير صحيح أو منتهي");
@@ -50,7 +51,7 @@ export async function startDesktopServer(options: { host?: string; pairingToken?
   application.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
   serveStatic(application);
 
-  const preferredPort = Number.parseInt(process.env.PORT || "3000", 10);
+  const preferredPort = options.port ?? Number.parseInt(process.env.PORT || "3000", 10);
   const port = await findAvailablePort(Number.isFinite(preferredPort) ? preferredPort : 0);
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

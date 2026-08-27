@@ -4,7 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { adjustInventory, createCategory, createCustomer, createEmployee, createExpense, createProduct, getDailySummary, getSaleDetails, getSalesByEmployee, listEmployees, listSales, updateEmployee, resetEmployeeCode, listLocalAuthEvents, listPurchaseItems, updatePurchaseItem, deletePurchaseItem, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, transferInventory, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations, createLocalManager, deleteLocalSession, getLocalAuthStatus, loginLocalManager, loginLocalEmployee, verifyLocalManagerPassword, changeLocalManagerPassword } from "./db";
+import { adjustInventory, createCategory, createCustomer, createEmployee, createExpense, createProduct, getDailySummary, getSaleDetails, getSalesByEmployee, listEmployees, listSales, updateEmployee, deleteEmployee, resetEmployeeCode, listLocalAuthEvents, listPurchaseItems, updatePurchaseItem, deletePurchaseItem, updateProduct, createSupplier, createSale, createPurchase, deleteCategory, recordInstallmentPayment, deleteCustomer, deleteExpense, deleteProduct, deleteSupplier, updateCategory, updateCustomer, updateSupplier, getReportSummary, transferInventory, listCategories, listInstallments, listInventoryMovements, listProducts, listCustomers, listSuppliers, listExpenses, recordSyncOperations, createLocalManager, deleteLocalSession, getLocalAuthStatus, loginLocalManager, loginLocalEmployee, verifyLocalManagerPassword, changeLocalManagerPassword } from "./db";
 
 async function verifySensitiveManagerPassword(password: string | undefined) {
   if (process.env.LOCAL_DESKTOP_MODE !== "1" && !process.env.LOCAL_DB_PATH) return;
@@ -18,6 +18,7 @@ export const appRouter = router({
     create: adminProcedure.input(z.object({ name: z.string().min(2).max(180), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40), role: z.enum(["user", "admin"]).default("user") })).mutation(({ input }) => createEmployee({ ...input, email: input.email || undefined })),
     update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).max(180).optional(), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40).optional(), role: z.enum(["user", "admin"]).optional(), isActive: z.boolean().optional() })).mutation(({ input }) => { const { id, ...data } = input; return updateEmployee(id, { ...data, email: data.email || undefined }); }),
     resetCode: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resetEmployeeCode(input.id)),
+    delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteEmployee(input.id)),
   }),
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),

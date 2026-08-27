@@ -205,6 +205,17 @@ export async function createEmployee(input: { name: string; email?: string; empl
   const timestamp = now(); const result = getLocalDb().prepare(`INSERT INTO users (openId,name,email,employeeCode,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,1,'employee-code',?,?,?)`).run(`employee-${input.employeeCode}-${Date.now()}`, input.name, input.email || null, input.employeeCode, input.role || "user", timestamp, timestamp, timestamp);
   return { success: true, id: Number(result.lastInsertRowid) };
 }
+export async function deleteEmployee(id: number) {
+  const db = getLocalDb();
+  const user: any = db.prepare("SELECT id,role FROM users WHERE id = ? LIMIT 1").get(id);
+  if (!user) throw new Error("الموظف غير موجود");
+  if (user.role === "admin") throw new Error("لا يمكن حذف حساب المدير");
+  db.prepare("UPDATE sales SET sellerId = NULL WHERE sellerId = ?").run(id);
+  db.prepare("DELETE FROM localSessions WHERE userId = ?").run(id);
+  db.prepare("DELETE FROM users WHERE id = ?").run(id);
+  return { success: true };
+}
+
 export async function resetEmployeeCode(id: number) {
   const db = getLocalDb();
   const user: any = db.prepare("SELECT id,role FROM users WHERE id = ? LIMIT 1").get(id);

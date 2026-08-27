@@ -9,7 +9,7 @@ describe("Windows desktop packaging", () => {
   it("includes the Hawr icon and optional signing configuration", () => {
     const packageJson = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/windows-desktop.yml");
-    expect(packageJson.version).toBe("1.3.6");
+    expect(packageJson.version).toBe("1.3.7");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
     expect(packageJson.build.publish.provider).toBe("github");
     expect(packageJson.build.publish.repo).toBe("hawr-sales-system");
@@ -19,6 +19,13 @@ describe("Windows desktop packaging", () => {
     expect(workflow).toContain("WIN_CSC_KEY_PASSWORD");
     expect(workflow).toContain("electron-builder --win --x64 --publish always");
     expect(fs.existsSync(path.join(root, "electron/installer.nsh"))).toBe(true);
+  });
+
+  it("uses the server SQLite status as the first-run source of truth", () => {
+    const gate = read("client/src/components/LocalAuthGate.tsx");
+    expect(gate).toContain("Treat the server's SQLite status as the single source of truth");
+    expect(gate).toContain("if (!status.data?.configured) return <ManagerSetup");
+    expect(gate).not.toContain("!status.data?.configured || desktopConfigured === false");
   });
 
   it("contains a first-run wizard and secure LAN pairing route", () => {

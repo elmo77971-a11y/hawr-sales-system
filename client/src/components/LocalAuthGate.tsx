@@ -73,7 +73,10 @@ export function LocalAuthGate({ children }: { children: React.ReactNode }) {
 
   if (localRuntime === null || (localRuntime && (desktopConfigured === null || status.isLoading || me.isLoading))) return <main dir="rtl" className="grid min-h-screen place-items-center bg-[#f7f7f5] text-sm text-slate-500">جارٍ التحقق من تشغيل النظام المحلي...</main>;
   if (!localRuntime) return <>{children}</>;
-  if (!status.data?.configured || desktopConfigured === false) return <ManagerSetup onComplete={async () => { setDesktopConfigured(true); await status.refetch(); await me.refetch(); }} />;
+  // The tRPC server and the Electron desktop server share the same LOCAL_DB_PATH.
+  // Treat the server's SQLite status as the single source of truth; the IPC probe is
+  // diagnostic only and must never force setup when a manager already exists.
+  if (!status.data?.configured) return <ManagerSetup onComplete={async () => { setDesktopConfigured(true); await status.refetch(); await me.refetch(); }} />;
   if (!me.data) return <LocalLogin onSuccess={async () => { await utils.auth.me.invalidate(); }} />;
   return <>{children}</>;
 }

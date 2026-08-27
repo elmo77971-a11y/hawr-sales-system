@@ -51,6 +51,7 @@ export const createLocalManager = localDb.createLocalManager;
 export const loginLocalManager = localDb.loginLocalManager;
 export const loginLocalEmployee = localDb.loginLocalEmployee;
 export const verifyLocalManagerPassword = localDb.verifyLocalManagerPassword;
+export const changeLocalManagerPassword = localDb.changeLocalManagerPassword;
 export const getLocalUserBySession = localDb.getLocalUserBySession;
 export const deleteLocalSession = localDb.deleteLocalSession;
 export const logoutLocalUser = localDb.logoutLocalUser;

@@ -83,6 +83,10 @@ ipcMain.handle("complete-setup", async (_event, values) => {
   await startup;
   return { success: true };
 });
+ipcMain.handle("desktop-local-setup-state", () => {
+  if (!fs.existsSync(databasePath())) return { configured: false };
+  try { const BetterSqlite3 = require("better-sqlite3"); const db = new BetterSqlite3(databasePath(), { readonly: true }); const row = db.prepare("SELECT a.managerCode,u.id AS managerId,u.role,u.isActive FROM localAuth a LEFT JOIN users u ON u.id = a.managerUserId WHERE a.id = 1 LIMIT 1").get(); db.close(); return { configured: Boolean(row?.managerId && row.role === "admin" && row.isActive !== 0 && row.managerCode) }; } catch { return { configured: false }; }
+});
 ipcMain.handle("desktop-update-status", () => updateState);
 ipcMain.handle("desktop-update-install", () => { if (updateState.downloaded) { isQuitting = true; autoUpdater.quitAndInstall(false, true); return { success: true }; } return { success: false }; });
 ipcMain.handle("desktop-network-info", () => ({ host: lanHost, port: localServer?.port || null, addresses: networkAddresses(), url: localServer ? pairingUrl(localServer.port) : null }));

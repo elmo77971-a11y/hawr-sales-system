@@ -9,7 +9,7 @@ describe("Windows desktop packaging", () => {
   it("includes the Hawr icon and optional signing configuration", () => {
     const packageJson = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/windows-desktop.yml");
-    expect(packageJson.version).toBe("1.3.5");
+    expect(packageJson.version).toBe("1.3.6");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
     expect(packageJson.build.publish.provider).toBe("github");
     expect(packageJson.build.publish.repo).toBe("hawr-sales-system");
@@ -36,6 +36,7 @@ describe("Windows desktop packaging", () => {
     expect(main).toContain("autoUpdater.autoDownload = true");
     expect(main).toContain("desktop-update-status");
     expect(main).toContain("desktop-network-info");
+    expect(main).toContain("desktop-local-setup-state");
     expect(main).toContain("desktop-backup-database");
     expect(main).toContain("desktop-restore-database");
     expect(main).toContain("isSQLiteDatabase");

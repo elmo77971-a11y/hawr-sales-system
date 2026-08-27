@@ -48,6 +48,7 @@ export const recordInstallmentPayment = implementation.recordInstallmentPayment;
 export const getLocalAuthStatus = localDb.getLocalAuthStatus;
 export const createLocalManager = localDb.createLocalManager;
 export const loginLocalManager = localDb.loginLocalManager;
+export const loginLocalEmployee = localDb.loginLocalEmployee;
 export const verifyLocalManagerPassword = localDb.verifyLocalManagerPassword;
 export const getLocalUserBySession = localDb.getLocalUserBySession;
 export const deleteLocalSession = localDb.deleteLocalSession;

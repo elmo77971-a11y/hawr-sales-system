@@ -9,10 +9,11 @@ describe("Windows desktop packaging", () => {
   it("includes the Hawr icon and optional signing configuration", () => {
     const packageJson = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/windows-desktop.yml");
-    expect(packageJson.version).toBe("1.3.8");
+    expect(packageJson.version).toBe("1.3.9");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
     expect(packageJson.build.publish.provider).toBe("github");
     expect(packageJson.build.publish.repo).toBe("hawr-sales-system");
+    expect(packageJson.build.nsis.deleteAppDataOnUninstall).toBe(true);
     expect(fs.existsSync(path.join(root, "assets/hawr-icon.ico"))).toBe(true);
     expect(fs.existsSync(path.join(root, "electron/loading.html"))).toBe(true);
     expect(workflow).toContain("WIN_CSC_LINK");
@@ -49,6 +50,8 @@ describe("Windows desktop packaging", () => {
     expect(main).toContain("desktop-reset-database");
     expect(main).toContain("const backup = await backupDatabase()");
     expect(main).toContain("app.relaunch()");
+    expect(main).toContain("async function launch() { await createMainWindow(); }");
+    expect(main).not.toContain("if (!readSettings().setupComplete) createSetupWindow()");
     expect(main).toContain("isSQLiteDatabase");
     expect(read("electron/preload.cjs")).toContain("backupDatabase");
     expect(read("electron/preload.cjs")).toContain("restoreDatabase");

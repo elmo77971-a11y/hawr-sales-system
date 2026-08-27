@@ -174,7 +174,7 @@ async function createMainWindow() {
   }
   return mainWindow;
 }
-async function launch() { if (!readSettings().setupComplete) createSetupWindow(); else await createMainWindow(); }
+async function launch() { await createMainWindow(); }
 
 if (gotSingleInstanceLock) {
   app.on("second-instance", () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); } });

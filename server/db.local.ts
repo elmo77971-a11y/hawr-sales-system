@@ -125,6 +125,16 @@ export async function createLocalManager(input: { name: string; managerCode: str
 
 export async function verifyLocalManagerPassword(password: string) { const auth: any = getLocalDb().prepare("SELECT passwordSalt,passwordHash FROM localAuth WHERE id = 1 LIMIT 1").get(); return Boolean(auth && password.length > 0 && passwordsMatch(password, auth.passwordSalt, auth.passwordHash)); }
 
+export async function changeLocalManagerPassword(input: { oldPassword: string; newPassword: string }) {
+  if (input.newPassword.length < 6) throw new Error("كلمة المرور الجديدة يجب ألا تقل عن 6 أحرف");
+  const db = getLocalDb();
+  const auth: any = db.prepare("SELECT passwordSalt,passwordHash FROM localAuth WHERE id = 1 LIMIT 1").get();
+  if (!auth || !passwordsMatch(input.oldPassword, auth.passwordSalt, auth.passwordHash)) throw new Error("كلمة المرور القديمة غير صحيحة");
+  const passwordSalt = createPasswordSalt();
+  db.prepare("UPDATE localAuth SET passwordHash = ?, passwordSalt = ?, updatedAt = ? WHERE id = 1").run(hashPassword(input.newPassword, passwordSalt), passwordSalt, now());
+  return { success: true };
+}
+
 function recordAuthEvent(input: { userId?: number; eventType: "login" | "logout"; name?: string; employeeCode?: string; success?: boolean; reason?: string }) {
   getLocalDb().prepare("INSERT INTO localAuthEvents (userId,eventType,name,employeeCode,success,reason,createdAt) VALUES (?,?,?,?,?,?,?)").run(input.userId ?? null, input.eventType, input.name ?? null, input.employeeCode ?? null, input.success === false ? 0 : 1, input.reason ?? null, now());
 }

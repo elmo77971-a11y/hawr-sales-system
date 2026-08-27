@@ -13,4 +13,6 @@ contextBridge.exposeInMainWorld("hawrDesktop", {
   },
   getNetworkInfo: () => ipcRenderer.invoke("desktop-network-info"),
   showPairing: () => ipcRenderer.invoke("desktop-show-pairing"),
+  backupDatabase: () => ipcRenderer.invoke("desktop-backup-database"),
+  restoreDatabase: () => ipcRenderer.invoke("desktop-restore-database"),
 });

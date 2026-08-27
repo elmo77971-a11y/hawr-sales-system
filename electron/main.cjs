@@ -87,16 +87,32 @@ ipcMain.handle("desktop-update-status", () => updateState);
 ipcMain.handle("desktop-update-install", () => { if (updateState.downloaded) { isQuitting = true; autoUpdater.quitAndInstall(false, true); return { success: true }; } return { success: false }; });
 ipcMain.handle("desktop-network-info", () => ({ host: lanHost, port: localServer?.port || null, addresses: networkAddresses(), url: localServer ? pairingUrl(localServer.port) : null }));
 ipcMain.handle("desktop-show-pairing", () => showPhoneLink());
+ipcMain.handle("desktop-backup-database", async () => { try { return await backupDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
+ipcMain.handle("desktop-restore-database", async () => { try { return await restoreDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 
-function backupDatabase() {
-  if (!fs.existsSync(databasePath())) return dialog.showMessageBox(mainWindow, { type: "warning", title: "لا توجد بيانات", message: "لم يتم إنشاء قاعدة بيانات بعد." });
-  return dialog.showSaveDialog(mainWindow, { title: "حفظ نسخة احتياطية", defaultPath: path.join(app.getPath("documents"), `hawr-gallery-backup-${new Date().toISOString().slice(0, 10)}.sqlite`), filters: [{ name: "SQLite Database", extensions: ["sqlite"] }] }).then(result => { if (!result.canceled && result.filePath) fs.copyFileSync(databasePath(), result.filePath); });
+function isSQLiteDatabase(filename) { try { return fs.readFileSync(filename).subarray(0, 16).toString("utf8") === "SQLite format 3\\u0000"; } catch { return false; } }
+function checkpointDatabase() { try { const BetterSqlite3 = require("better-sqlite3"); const db = new BetterSqlite3(databasePath()); db.pragma("wal_checkpoint(TRUNCATE)"); db.close(); } catch (error) { console.warn("SQLite checkpoint skipped:", error?.message || error); } }
+async function backupDatabase() {
+  if (!fs.existsSync(databasePath())) { await dialog.showMessageBox(mainWindow, { type: "warning", title: "لا توجد بيانات", message: "لم يتم إنشاء قاعدة بيانات بعد." }); return { success: false, canceled: false, error: "لا توجد قاعدة بيانات" }; }
+  checkpointDatabase();
+  const result = await dialog.showSaveDialog(mainWindow, { title: "حفظ نسخة احتياطية", defaultPath: path.join(app.getPath("documents"), `hawr-gallery-backup-${new Date().toISOString().slice(0, 10)}.sqlite`), filters: [{ name: "SQLite Database", extensions: ["sqlite"] }] });
+  if (result.canceled || !result.filePath) return { success: false, canceled: true };
+  fs.copyFileSync(databasePath(), result.filePath);
+  return { success: true, filePath: result.filePath };
 }
 async function restoreDatabase() {
   const result = await dialog.showOpenDialog(mainWindow, { title: "استعادة نسخة احتياطية", properties: ["openFile"], filters: [{ name: "SQLite Database", extensions: ["sqlite", "db"] }] });
-  if (result.canceled || !result.filePaths[0]) return;
-  const confirm = await dialog.showMessageBox(mainWindow, { type: "warning", buttons: ["استعادة", "إلغاء"], defaultId: 1, title: "تأكيد الاستعادة", message: "سيتم استبدال البيانات المحلية الحالية. هل تريد المتابعة؟" });
-  if (confirm.response === 0) { fs.copyFileSync(result.filePaths[0], databasePath()); await dialog.showMessageBox(mainWindow, { type: "info", title: "تمت الاستعادة", message: "أُعيدت قاعدة البيانات. أغلق البرنامج وافتحه مرة أخرى." }); }
+  if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
+  const source = result.filePaths[0];
+  if (!isSQLiteDatabase(source)) { await dialog.showMessageBox(mainWindow, { type: "error", title: "ملف غير صالح", message: "الملف المحدد ليس قاعدة SQLite صالحة." }); return { success: false, error: "ملف SQLite غير صالح" }; }
+  const confirm = await dialog.showMessageBox(mainWindow, { type: "warning", buttons: ["استعادة", "إلغاء"], defaultId: 1, title: "تأكيد الاستعادة", message: "سيتم استبدال البيانات المحلية الحالية. تأكد من وجود نسخة احتياطية حديثة قبل المتابعة." });
+  if (confirm.response !== 0) return { success: false, canceled: true };
+  checkpointDatabase();
+  fs.rmSync(`${databasePath()}-wal`, { force: true });
+  fs.rmSync(`${databasePath()}-shm`, { force: true });
+  fs.copyFileSync(source, databasePath());
+  await dialog.showMessageBox(mainWindow, { type: "info", title: "تمت الاستعادة", message: "تمت استعادة قاعدة البيانات. أغلق البرنامج وافتحه مرة أخرى لتطبيق البيانات." });
+  return { success: true, requiresRestart: true };
 }
 function escapeHtml(value) { return String(value).replace(/[&<>\"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[character])); }
 async function showPhoneLink() {

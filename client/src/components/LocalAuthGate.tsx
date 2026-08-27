@@ -29,13 +29,25 @@ function ManagerSetup({ onComplete }: { onComplete: () => Promise<void> }) {
   return <AuthCard title="إنشاء حساب المدير" description="هذه الخطوة تظهر مرة واحدة فقط. المدير هو المسؤول عن الموظفين والأكواد والإعدادات الحساسة داخل النظام."><form onSubmit={submit} className="space-y-4"><label className="block text-sm font-bold">اسم المدير<Input required minLength={2} value={name} onChange={e => setName(e.target.value)} placeholder="مثال: محمد سليمان" className="mt-2 h-11 rounded-none" /></label><label className="block text-sm font-bold">كود المدير<Input required minLength={3} pattern="[A-Za-z0-9_-]{3,40}" value={managerCode} onChange={e => setManagerCode(e.target.value)} placeholder="MANAGER01" dir="ltr" className="mt-2 h-11 rounded-none text-left" /><span className="mt-1 block text-xs font-normal text-slate-400">استخدم حروفًا وأرقامًا إنجليزية فقط.</span></label><label className="block text-sm font-bold">كلمة المرور<Input required minLength={6} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6 أحرف على الأقل" dir="ltr" className="mt-2 h-11 rounded-none text-left" /></label><label className="block text-sm font-bold">تأكيد كلمة المرور<Input required minLength={6} type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="أعد كتابة كلمة المرور" dir="ltr" className="mt-2 h-11 rounded-none text-left" /></label>{error && <p className="bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}<Button type="submit" disabled={register.isPending} className="h-11 w-full rounded-none bg-slate-950">{register.isPending ? "جارٍ إنشاء الحساب..." : "حفظ وبدء استخدام النظام"}</Button></form></AuthCard>;
 }
 
-function ManagerLogin({ onSuccess }: { onSuccess: () => Promise<void> }) {
-  const [managerCode, setManagerCode] = useState("");
+function LocalLogin({ onSuccess }: { onSuccess: () => Promise<void> }) {
+  const [mode, setMode] = useState<"manager" | "employee">("employee");
+  const [name, setName] = useState("");
+  const [employeeCode, setEmployeeCode] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const login = trpc.auth.localLogin.useMutation();
-  const submit = (event: React.FormEvent) => { event.preventDefault(); setError(""); login.mutate({ managerCode, password }, { onSuccess: () => void onSuccess(), onError: e => setError(e.message) }); };
-  return <AuthCard title="تسجيل دخول المدير" description="أدخل كود المدير وكلمة المرور للوصول إلى المبيعات والمخزون وإدارة الموظفين."><div className="mb-6 grid grid-cols-2 gap-3 text-xs font-bold"><div className="flex items-center gap-2 bg-green-50 p-3 text-green-700"><ShieldCheck size={16} /> دخول محلي آمن</div><div className="flex items-center gap-2 bg-blue-50 p-3 text-blue-700"><Wifi size={16} /> يعمل عبر Wi‑Fi</div></div><form onSubmit={submit} className="space-y-4"><label className="block text-sm font-bold">كود المدير<Input required value={managerCode} onChange={e => setManagerCode(e.target.value)} placeholder="MANAGER01" dir="ltr" className="mt-2 h-11 rounded-none text-left" /></label><label className="block text-sm font-bold">كلمة المرور<Input required type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="كلمة المرور" dir="ltr" className="mt-2 h-11 rounded-none text-left" /></label>{error && <p className="bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}<Button type="submit" disabled={login.isPending} className="h-11 w-full rounded-none bg-slate-950">{login.isPending ? "جارٍ التحقق..." : "دخول إلى النظام"}</Button></form></AuthCard>;
+  const managerLogin = trpc.auth.localLogin.useMutation();
+  const employeeLogin = trpc.auth.localEmployeeLogin.useMutation();
+  const pending = managerLogin.isPending || employeeLogin.isPending;
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError("");
+    if (mode === "manager") {
+      managerLogin.mutate({ name, managerCode: employeeCode, password }, { onSuccess: () => void onSuccess(), onError: e => setError(e.message) });
+    } else {
+      employeeLogin.mutate({ name, employeeCode }, { onSuccess: () => void onSuccess(), onError: e => setError(e.message) });
+    }
+  };
+  return <AuthCard title="تسجيل الدخول" description="اكتب اسمك وcode الخاص بك. المدير يستخدم كلمة المرور أيضًا، والموظف يدخل بالاسم وcode الذي سلّمه له المدير."><div className="mb-6 grid grid-cols-2 gap-3 text-xs font-bold"><button type="button" onClick={() => { setMode("employee"); setError(""); }} className={mode === "employee" ? "flex items-center gap-2 bg-slate-950 p-3 text-white" : "flex items-center gap-2 bg-slate-100 p-3 text-slate-600"}>دخول موظف</button><button type="button" onClick={() => { setMode("manager"); setError(""); }} className={mode === "manager" ? "flex items-center gap-2 bg-red-600 p-3 text-white" : "flex items-center gap-2 bg-red-50 p-3 text-red-700"}><ShieldCheck size={16} /> دخول مدير</button></div><div className="mb-5 flex items-center gap-2 bg-blue-50 p-3 text-xs font-bold text-blue-700"><Wifi size={16} /> الدخول المحلي يعمل عبر Wi‑Fi عند الربط</div><form onSubmit={submit} className="space-y-4"><label className="block text-sm font-bold">الاسم الكامل<Input required minLength={2} value={name} onChange={e => setName(e.target.value)} placeholder={mode === "manager" ? "اسم المدير" : "اسم الموظف"} className="mt-2 h-11 rounded-none" /></label><label className="block text-sm font-bold">code المستخدم<Input required minLength={1} value={employeeCode} onChange={e => setEmployeeCode(e.target.value)} placeholder={mode === "manager" ? "MANAGER01" : "EMP001"} dir="ltr" className="mt-2 h-11 rounded-none text-left" /></label>{mode === "manager" && <label className="block text-sm font-bold">كلمة مرور المدير<Input required minLength={6} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="كلمة مرور المدير" dir="ltr" className="mt-2 h-11 rounded-none text-left" /></label>}{error && <p className="bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}<Button type="submit" disabled={pending} className="h-11 w-full rounded-none bg-slate-950">{pending ? "جارٍ التحقق..." : "دخول إلى النظام"}</Button></form></AuthCard>;
 }
 
 export function LocalAuthGate({ children }: { children: React.ReactNode }) {
@@ -54,6 +66,6 @@ export function LocalAuthGate({ children }: { children: React.ReactNode }) {
   if (localRuntime === null || (localRuntime && (status.isLoading || me.isLoading))) return <main dir="rtl" className="grid min-h-screen place-items-center bg-[#f7f7f5] text-sm text-slate-500">جارٍ التحقق من تشغيل النظام المحلي...</main>;
   if (!localRuntime) return <>{children}</>;
   if (!status.data?.configured) return <ManagerSetup onComplete={async () => { await status.refetch(); await me.refetch(); }} />;
-  if (!me.data) return <ManagerLogin onSuccess={async () => { await utils.auth.me.invalidate(); }} />;
+  if (!me.data) return <LocalLogin onSuccess={async () => { await utils.auth.me.invalidate(); }} />;
   return <>{children}</>;
 }

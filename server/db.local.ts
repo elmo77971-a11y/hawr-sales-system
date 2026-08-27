@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { purchaseRemovalDelta, purchaseStockDelta, purchaseUnitPrice, purchaseLocation } from "../shared/purchaseFlow";
 import { assertEnoughStock, validateTransferLocations } from "../shared/inventory";
+import { matchesLocalEmployee, matchesLocalManager } from "../shared/localAuth";
 import { LOCAL_SESSION_TTL_MS, createPasswordSalt, createSessionToken, hashPassword, hashSessionToken, passwordsMatch } from "./localAuthCrypto";
 
 let localDb: any = null;
@@ -119,12 +120,26 @@ export async function createLocalManager(input: { name: string; managerCode: str
 
 export async function verifyLocalManagerPassword(password: string) { const auth: any = getLocalDb().prepare("SELECT passwordSalt,passwordHash FROM localAuth WHERE id = 1 LIMIT 1").get(); return Boolean(auth && password.length > 0 && passwordsMatch(password, auth.passwordSalt, auth.passwordHash)); }
 
-export async function loginLocalManager(input: { managerCode: string; password: string }) {
+export async function loginLocalManager(input: { name: string; managerCode: string; password: string }) {
   const db = getLocalDb();
   const auth: any = db.prepare("SELECT * FROM localAuth WHERE id = 1 LIMIT 1").get();
   if (!auth) throw new Error("لم يتم تسجيل مدير لهذا البرنامج بعد");
   const user: any = db.prepare("SELECT * FROM users WHERE id = ? AND isActive = 1 LIMIT 1").get(auth.managerUserId);
-  if (!user || user.employeeCode !== input.managerCode.trim() || !passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) throw new Error("كود المدير أو كلمة المرور غير صحيحة");
+  if (!matchesLocalManager(user, input.name, input.managerCode) || !passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) throw new Error("اسم المدير أو كوده أو كلمة المرور غير صحيحة");
+  const token = createSessionToken();
+  const timestamp = now();
+  db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), user.id, timestamp, new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString());
+  db.prepare("UPDATE users SET lastSignedIn = ?, updatedAt = ? WHERE id = ?").run(timestamp, timestamp, user.id);
+  return { token, user: publicUser({ ...user, lastSignedIn: timestamp }) };
+}
+
+export async function loginLocalEmployee(input: { name: string; employeeCode: string }) {
+  const name = input.name.trim();
+  const employeeCode = input.employeeCode.trim();
+  if (name.length < 2 || employeeCode.length < 1) throw new Error("اكتب اسم الموظف وكوده");
+  const db = getLocalDb();
+  const user: any = db.prepare("SELECT * FROM users WHERE employeeCode = ? AND lower(trim(name)) = lower(trim(?)) AND isActive = 1 LIMIT 1").get(employeeCode, name);
+  if (!matchesLocalEmployee(user, name, employeeCode)) throw new Error("اسم الموظف أو الكود غير صحيح");
   const token = createSessionToken();
   const timestamp = now();
   db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), user.id, timestamp, new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString());
@@ -146,6 +161,7 @@ export async function deleteLocalSession(token: string | undefined) { if (token)
 
 export async function listEmployees() { return getLocalDb().prepare("SELECT id,name,email,employeeCode,role,isActive,createdAt FROM users ORDER BY createdAt DESC").all().map((row: any) => ({ ...row, isActive: Boolean(row.isActive) })); }
 export async function createEmployee(input: { name: string; email?: string; employeeCode: string; role?: "user" | "admin" }) {
+  if (input.role === "admin") throw new Error("لا يمكن إنشاء مدير إضافي من شاشة الموظفين المحلية");
   const timestamp = now(); const result = getLocalDb().prepare(`INSERT INTO users (openId,name,email,employeeCode,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,1,'employee-code',?,?,?)`).run(`employee-${input.employeeCode}-${Date.now()}`, input.name, input.email || null, input.employeeCode, input.role || "user", timestamp, timestamp, timestamp);
   return { success: true, id: Number(result.lastInsertRowid) };
 }

@@ -22,6 +22,9 @@ describe("Windows desktop packaging", () => {
     expect(setup).toContain("completeSetup");
     expect(main).toContain("setupComplete");
     expect(main).toContain("/__desktop/pair");
+    expect(main).toContain('loadFile(path.join(__dirname, "loading.html"))');
+    expect(main).toContain("showStartupError");
+    expect(main).toContain("mainWindow.show()");
     expect(server).toContain("hawr_pair=approved");
     expect(server).toContain("يلزم فتح رابط الربط");
   });

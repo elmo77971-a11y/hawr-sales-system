@@ -11,6 +11,7 @@ describe("Windows desktop packaging", () => {
     const workflow = read(".github/workflows/windows-desktop.yml");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
     expect(fs.existsSync(path.join(root, "assets/hawr-icon.ico"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "electron/loading.html"))).toBe(true);
     expect(workflow).toContain("WIN_CSC_LINK");
     expect(workflow).toContain("WIN_CSC_KEY_PASSWORD");
   });
@@ -24,6 +25,7 @@ describe("Windows desktop packaging", () => {
     expect(main).toContain("/__desktop/pair");
     expect(main).toContain('loadFile(path.join(__dirname, "loading.html"))');
     expect(main).toContain("showStartupError");
+    expect(read("electron/loading.html")).toContain("جارٍ تشغيل النظام المحلي");
     expect(main).toContain("mainWindow.show()");
     expect(server).toContain("hawr_pair=approved");
     expect(server).toContain("يلزم فتح رابط الربط");

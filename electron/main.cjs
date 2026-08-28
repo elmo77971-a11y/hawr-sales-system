@@ -14,10 +14,11 @@ let localServer;
 let pairingToken;
 let lanHost;
 let isQuitting = false;
+const isDailyBackupInvocation = process.argv.includes("--daily-backup");
 let updateConfigured = false;
 let updateState = { status: "idle", version: null, downloaded: false, error: null };
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const gotSingleInstanceLock = isDailyBackupInvocation ? true : app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) app.quit();
 
 function dataDirectory() { return path.join(app.getPath("userData"), "data"); }
@@ -94,9 +95,27 @@ ipcMain.handle("desktop-show-pairing", () => showPhoneLink());
 ipcMain.handle("desktop-backup-database", async () => { try { return await backupDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 ipcMain.handle("desktop-restore-database", async () => { try { return await restoreDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 ipcMain.handle("desktop-reset-database", async () => { try { return await resetDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
+ipcMain.handle("desktop-automatic-backup-status", () => ({ enabled: true, schedule: "يوميًا الساعة 23:00 حسب توقيت Windows", directory: automaticBackupDirectory(), retention: automaticBackupRetention(), lastBackupAt: readSettings().lastAutomaticBackupAt || null }));
 
 function isSQLiteDatabase(filename) { try { return fs.readFileSync(filename).subarray(0, 16).toString("utf8") === "SQLite format 3\\u0000"; } catch { return false; } }
 function checkpointDatabase() { try { const BetterSqlite3 = require("better-sqlite3"); const db = new BetterSqlite3(databasePath()); db.pragma("wal_checkpoint(TRUNCATE)"); db.close(); } catch (error) { console.warn("SQLite checkpoint skipped:", error?.message || error); } }
+function automaticBackupDirectory() { return readSettings().autoBackupDirectory || path.join(app.getPath("documents"), "Hawr Gallery Backups"); }
+function automaticBackupRetention() { const value = Number(readSettings().autoBackupRetention); return Number.isInteger(value) && value >= 3 && value <= 90 ? value : 14; }
+function automaticBackupFiles(directory) { try { return fs.readdirSync(directory).filter(name => /^hawr-gallery-auto-\\d{8}-\\d{6}\\.sqlite$/.test(name)).map(name => ({ name, path: path.join(directory, name), mtime: fs.statSync(path.join(directory, name)).mtimeMs })).sort((a, b) => b.mtime - a.mtime); } catch { return []; } }
+function runAutomaticBackup() {
+  if (!fs.existsSync(databasePath())) return { success: false, skipped: true, reason: "لا توجد قاعدة بيانات بعد" };
+  const directory = automaticBackupDirectory();
+  fs.mkdirSync(directory, { recursive: true });
+  checkpointDatabase();
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+  const filePath = path.join(directory, `hawr-gallery-auto-${stamp}.sqlite`);
+  fs.copyFileSync(databasePath(), filePath);
+  const files = automaticBackupFiles(directory);
+  for (const file of files.slice(automaticBackupRetention())) fs.rmSync(file.path, { force: true });
+  writeSettings({ autoBackupDirectory: directory, autoBackupRetention: automaticBackupRetention(), lastAutomaticBackupAt: now.toISOString(), lastAutomaticBackupPath: filePath, lastAutomaticBackupError: null });
+  return { success: true, filePath, retained: Math.min(files.length, automaticBackupRetention()) };
+}
 async function backupDatabase() {
   if (!fs.existsSync(databasePath())) { await dialog.showMessageBox(mainWindow, { type: "warning", title: "لا توجد بيانات", message: "لم يتم إنشاء قاعدة بيانات بعد." }); return { success: false, canceled: false, error: "لا توجد قاعدة بيانات" }; }
   checkpointDatabase();
@@ -175,10 +194,11 @@ async function createMainWindow() {
   return mainWindow;
 }
 async function launch() { await createMainWindow(); }
+async function runDailyBackupAndExit() { try { const result = runAutomaticBackup(); if (!result.success && !result.skipped) writeSettings({ lastAutomaticBackupError: result.reason || "فشل النسخ التلقائي" }); } catch (error) { try { writeSettings({ lastAutomaticBackupError: error?.message || String(error) }); } catch {} } finally { app.quit(); } }
 
 if (gotSingleInstanceLock) {
   app.on("second-instance", () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); } });
-  app.whenReady().then(launch).catch(error => { showStartupError(error); app.quit(); });
+  app.whenReady().then(() => isDailyBackupInvocation ? runDailyBackupAndExit() : launch()).catch(error => { showStartupError(error); app.quit(); });
   app.on("before-quit", () => { isQuitting = true; });
   app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
   app.on("activate", () => { if (!mainWindow && !setupWindow) void launch().catch(showStartupError); });

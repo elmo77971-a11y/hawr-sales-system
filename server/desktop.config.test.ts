@@ -9,7 +9,7 @@ describe("Windows desktop packaging", () => {
   it("includes the Hawr icon and optional signing configuration", () => {
     const packageJson = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/windows-desktop.yml");
-    expect(packageJson.version).toBe("1.4.0");
+    expect(packageJson.version).toBe("1.5.0");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
     expect(packageJson.build.publish.provider).toBe("github");
     expect(packageJson.build.publish.repo).toBe("hawr-sales-system");
@@ -17,6 +17,9 @@ describe("Windows desktop packaging", () => {
     const installer = read("electron/installer.nsh");
     expect(installer).toContain('RMDir /r "$APPDATA\\hawr-sales-system"');
     expect(installer).toContain('RMDir /r "$LOCALAPPDATA\\hawr-sales-system"');
+    expect(installer).toContain("Hawr Gallery Daily Backup");
+    expect(installer).toContain("--daily-backup");
+    expect(installer).toContain("schtasks /Delete");
     expect(fs.existsSync(path.join(root, "assets/hawr-icon.ico"))).toBe(true);
     expect(fs.existsSync(path.join(root, "electron/loading.html"))).toBe(true);
     expect(workflow).toContain("WIN_CSC_LINK");
@@ -51,6 +54,12 @@ describe("Windows desktop packaging", () => {
     expect(main).toContain("desktop-backup-database");
     expect(main).toContain("desktop-restore-database");
     expect(main).toContain("desktop-reset-database");
+    expect(main).toContain("desktop-automatic-backup-status");
+    expect(main).toContain("runAutomaticBackup");
+    expect(main).toContain("isDailyBackupInvocation");
+    expect(read("electron/preload.cjs")).toContain("getAutomaticBackupStatus");
+    expect(read("client/src/electron.d.ts")).toContain("getAutomaticBackupStatus?");
+    expect(read("client/src/pages/Home.tsx")).toContain("النسخ التلقائي اليومي مفعّل");
     expect(main).toContain("const backup = await backupDatabase()");
     expect(main).toContain("app.relaunch()");
     expect(main).toContain("async function launch() { await createMainWindow(); }");

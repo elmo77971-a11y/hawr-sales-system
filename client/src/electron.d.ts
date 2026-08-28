@@ -15,6 +15,7 @@ declare global {
       backupDatabase?: () => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
       restoreDatabase?: () => Promise<{ success: boolean; canceled?: boolean; requiresRestart?: boolean; error?: string }>;
       resetDatabase?: () => Promise<{ success: boolean; canceled?: boolean; requiresRestart?: boolean; backupPath?: string; error?: string }>;
+      getAutomaticBackupStatus?: () => Promise<{ enabled: boolean; schedule: string; directory: string; retention: number; lastBackupAt: string | null }>;
     };
   }
 }

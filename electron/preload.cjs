@@ -17,4 +17,5 @@ contextBridge.exposeInMainWorld("hawrDesktop", {
   backupDatabase: () => ipcRenderer.invoke("desktop-backup-database"),
   restoreDatabase: () => ipcRenderer.invoke("desktop-restore-database"),
   resetDatabase: () => ipcRenderer.invoke("desktop-reset-database"),
+  getAutomaticBackupStatus: () => ipcRenderer.invoke("desktop-automatic-backup-status"),
 });

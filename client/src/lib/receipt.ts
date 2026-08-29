@@ -1,7 +1,7 @@
 import QRCode from "qrcode";
 
 export type ReceiptLine = { name: string; quantity: number; unitPrice: string; discount: number; location?: string | null };
-export type ReceiptInput = { invoiceNo: string; mode: "sale" | "purchase"; lines: ReceiptLine[]; total: number; paid: number; customerName?: string; sellerCode?: string; createdAt?: number | string | Date };
+export type ReceiptInput = { invoiceNo: string; mode: "sale" | "purchase"; lines: ReceiptLine[]; total: number; paid: number; customerName?: string; customerPhone?: string; sellerCode?: string; createdAt?: number | string | Date };
 const LAST_RECEIPT = "hawr-last-receipt-v1";
 
 export function buildReceiptHtml(input: ReceiptInput, qrDataUrl = "") {

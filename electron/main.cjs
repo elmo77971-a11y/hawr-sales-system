@@ -97,7 +97,20 @@ ipcMain.handle("desktop-restore-database", async () => { try { return await rest
 ipcMain.handle("desktop-reset-database", async () => { try { return await resetDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 ipcMain.handle("desktop-automatic-backup-status", () => ({ enabled: true, schedule: "يوميًا الساعة 23:00 حسب توقيت Windows", directory: automaticBackupDirectory(), retention: automaticBackupRetention(), lastBackupAt: readSettings().lastAutomaticBackupAt || null }));
 
-function isSQLiteDatabase(filename) { try { return fs.readFileSync(filename).subarray(0, 16).toString("utf8") === "SQLite format 3\\u0000"; } catch { return false; } }
+function isSQLiteDatabase(filename) {
+  try {
+    const stat = fs.statSync(filename);
+    if (!stat.isFile() || stat.size < 100) return false;
+    const header = fs.readFileSync(filename).subarray(0, 16).toString("utf8");
+    if (header !== "SQLite format 3\u0000") return false;
+    const BetterSqlite3 = require("better-sqlite3");
+    const db = new BetterSqlite3(filename, { readonly: true, fileMustExist: true });
+    const integrity = db.pragma("integrity_check", { simple: true });
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name);
+    db.close();
+    return integrity === "ok" && tables.includes("products") && tables.includes("sales") && tables.includes("users");
+  } catch { return false; }
+}
 function checkpointDatabase() { try { const BetterSqlite3 = require("better-sqlite3"); const db = new BetterSqlite3(databasePath()); db.pragma("wal_checkpoint(TRUNCATE)"); db.close(); } catch (error) { console.warn("SQLite checkpoint skipped:", error?.message || error); } }
 function automaticBackupDirectory() { return readSettings().autoBackupDirectory || path.join(app.getPath("documents"), "Hawr Gallery Backups"); }
 function automaticBackupRetention() { const value = Number(readSettings().autoBackupRetention); return Number.isInteger(value) && value >= 3 && value <= 90 ? value : 14; }
@@ -152,10 +165,18 @@ async function restoreDatabase() {
   const confirm = await dialog.showMessageBox(mainWindow, { type: "warning", buttons: ["استعادة", "إلغاء"], defaultId: 1, title: "تأكيد الاستعادة", message: "سيتم استبدال البيانات المحلية الحالية. تأكد من وجود نسخة احتياطية حديثة قبل المتابعة." });
   if (confirm.response !== 0) return { success: false, canceled: true };
   checkpointDatabase();
+  if (localServer?.server) await new Promise(resolve => localServer.server.close(resolve));
+  localServer = null;
+  const temporary = `${databasePath()}.restore-${Date.now()}`;
+  fs.copyFileSync(source, temporary);
   fs.rmSync(`${databasePath()}-wal`, { force: true });
   fs.rmSync(`${databasePath()}-shm`, { force: true });
-  fs.copyFileSync(source, databasePath());
-  await dialog.showMessageBox(mainWindow, { type: "info", title: "تمت الاستعادة", message: "تمت استعادة قاعدة البيانات. أغلق البرنامج وافتحه مرة أخرى لتطبيق البيانات." });
+  fs.rmSync(databasePath(), { force: true });
+  fs.renameSync(temporary, databasePath());
+  await dialog.showMessageBox(mainWindow, { type: "info", title: "تمت الاستعادة", message: "تمت استعادة قاعدة البيانات بنجاح. سيعاد تشغيل البرنامج الآن لتطبيق البيانات." });
+  isQuitting = true;
+  app.relaunch();
+  app.exit(0);
   return { success: true, requiresRestart: true };
 }
 function escapeHtml(value) { return String(value).replace(/[&<>\"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[character])); }

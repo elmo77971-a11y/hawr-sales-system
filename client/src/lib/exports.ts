@@ -25,7 +25,28 @@ export function exportSalesToExcel(sales: Array<{ invoiceNo: string; customerNam
 export function mapPurchasesForExport(items: Array<{ productName: string; sku: string; unit: string; quantity: number; unitPrice: string; total: string; movementType?: string | null; invoiceNo?: string | null; createdAt: Date | string | number }>) { return items.map(item => ({ "نوع الحركة": item.movementType === "return" ? "توريد مرتجع" : "توريد عادي", "المرجع": item.invoiceNo || "", "اسم المنتج": item.productName, "الكود": item.sku, "الوحدة": item.unit, "الكمية": item.quantity, "السعر": Number(item.unitPrice), "الإجمالي": Number(item.total), "التاريخ والوقت": new Date(item.createdAt).toLocaleString("ar-EG") })); }
 export function exportPurchasesToExcel(items: Array<{ productName: string; sku: string; unit: string; quantity: number; unitPrice: string; total: string; movementType?: string | null; invoiceNo?: string | null; createdAt: Date | string | number }>, filename = "مشتريات-معرض-حور.xlsx") { makeWorkbook(mapPurchasesForExport(items), "المشتريات", filename, [16, 18, 26, 18, 12, 12, 14, 16, 24]); }
 
-export async function importProductsFromExcel(file: File) { const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" }); const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""]; const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "" }); return rows.map((row, index) => ({ rowNumber: index + 2, name: String(row["اسم المنتج"] || row.name || "").trim(), sku: String(row["الكود"] || row.sku || "").trim(), barcode: String(row["الباركود"] || row.barcode || "").trim() || undefined, unit: String(row["الوحدة"] || row.unit || "قطعة").trim(), location: String(row["المكان"] || row.location || "المخزن").trim(), stockQty: Number(row["العدد"] || row.stockQty || 0), salePrice: String(row["السعر"] || row.salePrice || "0").trim(), minStock: Number(row["الحد الأدنى"] || row.minStock || 0) })).filter(row => row.name || row.sku); }
+const excelValue = (row: Record<string, unknown>, names: string[], fallback = "") => {
+  for (const name of names) { const value = row[name]; if (value !== undefined && value !== null && String(value).trim() !== "") return value; }
+  return fallback;
+};
+const excelNumber = (value: unknown, fallback = 0) => { const normalized = String(value ?? "").replace(/[،,]/g, "").trim(); const number = Number(normalized); return Number.isFinite(number) ? number : fallback; };
+export async function importProductsFromExcel(file: File) {
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, raw: false });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""];
+  if (!firstSheet) return [];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false, blankrows: false });
+  return rows.map((row, index) => ({
+    rowNumber: index + 2,
+    name: String(excelValue(row, ["اسم المنتج", "اسم الصنف", "المنتج", "name"])).trim(),
+    sku: String(excelValue(row, ["الكود", "كود المنتج", "SKU", "sku"])).trim(),
+    barcode: String(excelValue(row, ["الباركود", "Barcode", "barcode"])).trim() || undefined,
+    unit: String(excelValue(row, ["الوحدة", "unit"], "قطعة")).trim() || "قطعة",
+    location: String(excelValue(row, ["المكان", "الموقع", "location"], "المخزن")).trim() || "المخزن",
+    stockQty: Math.max(0, Math.trunc(excelNumber(excelValue(row, ["العدد", "الكمية", "stockQty"])))),
+    salePrice: String(excelValue(row, ["السعر", "سعر البيع", "salePrice"], "0")).trim() || "0",
+    minStock: Math.max(0, Math.trunc(excelNumber(excelValue(row, ["الحد الأدنى", "حد التنبيه", "minStock"]))))
+  })).filter(row => row.name || row.sku);
+}
 
 function escapeHtml(value: unknown) { return String(value).replace(/[&<>\"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[character] || character)); }
 

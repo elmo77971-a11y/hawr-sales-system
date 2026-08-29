@@ -18,7 +18,7 @@ describe("Windows desktop packaging", () => {
     expect(installer).toContain('RMDir /r "$APPDATA\\hawr-sales-system"');
     expect(installer).toContain("تحديث مع الاحتفاظ ببيانات المبيعات والمخزون");
     expect(installer).toContain("تثبيت نظيف والبدء كأنه أول تشغيل");
-    expect(installer).toContain("StrCmp $InstallMode clean 0 keepData");
+    expect(installer).toContain("StrCmp $HGInstallMode clean 0 keepData");
     expect(installer).toContain("MessageBox MB_ICONEXCLAMATION|MB_YESNO");
     expect(installer).toContain('RMDir /r "$LOCALAPPDATA\\hawr-sales-system"');
     expect(installer).toContain("Hawr Gallery Daily Backup");

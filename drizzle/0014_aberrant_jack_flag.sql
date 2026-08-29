@@ -1,0 +1,1 @@
+ALTER TABLE `saleItems` ADD `costPrice` decimal(12,2) DEFAULT '0' NOT NULL;

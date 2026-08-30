@@ -15,8 +15,8 @@ export const appRouter = router({
   system: systemRouter,
   employees: router({
     list: adminProcedure.query(() => listEmployees()),
-    create: adminProcedure.input(z.object({ name: z.string().min(2).max(180), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40), password: z.string().min(6).max(200), salary: z.string().default("0"), role: z.enum(["user", "admin"]).default("user") })).mutation(({ input }) => createEmployee({ ...input, email: input.email || undefined })),
-    update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).max(180).optional(), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40).optional(), role: z.enum(["user", "admin"]).optional(), isActive: z.boolean().optional() })).mutation(({ input }) => { const { id, ...data } = input; return updateEmployee(id, { ...data, email: data.email || undefined }); }),
+    create: adminProcedure.input(z.object({ name: z.string().min(2).max(180), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40), password: z.string().min(6).max(200), salary: z.string().default("0"), role: z.enum(["user", "supervisor", "admin"]).default("user") })).mutation(({ input }) => createEmployee({ ...input, email: input.email || undefined })),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).max(180).optional(), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40).optional(), role: z.enum(["user", "supervisor", "admin"]).optional(), isActive: z.boolean().optional() })).mutation(({ input }) => { const { id, ...data } = input; return updateEmployee(id, { ...data, email: data.email || undefined }); }),
     resetCode: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resetEmployeeCode(input.id)),
     delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteEmployee(input.id)),
   }),

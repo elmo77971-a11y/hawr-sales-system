@@ -25,26 +25,37 @@ export function exportSalesToExcel(sales: Array<{ invoiceNo: string; customerNam
 export function mapPurchasesForExport(items: Array<{ productName: string; sku: string; unit: string; quantity: number; unitPrice: string; total: string; movementType?: string | null; invoiceNo?: string | null; createdAt: Date | string | number }>) { return items.map(item => ({ "نوع الحركة": item.movementType === "return" ? "توريد مرتجع" : "توريد عادي", "المرجع": item.invoiceNo || "", "اسم المنتج": item.productName, "الكود": item.sku, "الوحدة": item.unit, "الكمية": item.quantity, "السعر": Number(item.unitPrice), "الإجمالي": Number(item.total), "التاريخ والوقت": new Date(item.createdAt).toLocaleString("ar-EG") })); }
 export function exportPurchasesToExcel(items: Array<{ productName: string; sku: string; unit: string; quantity: number; unitPrice: string; total: string; movementType?: string | null; invoiceNo?: string | null; createdAt: Date | string | number }>, filename = "مشتريات-معرض-حور.xlsx") { makeWorkbook(mapPurchasesForExport(items), "المشتريات", filename, [16, 18, 26, 18, 12, 12, 14, 16, 24]); }
 
+const normalizeHeader = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/[\u064B-\u065F\u0670]/g, "").replace(/[أإآ]/g, "ا").replace(/[ى]/g, "ي").replace(/[ـ\s_\-./\\()[\]{}]/g, "");
+const normalizeDigits = (value: unknown) => String(value ?? "").replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
 const excelValue = (row: Record<string, unknown>, names: string[], fallback = "") => {
-  for (const name of names) { const value = row[name]; if (value !== undefined && value !== null && String(value).trim() !== "") return value; }
+  const wanted = names.map(normalizeHeader);
+  for (const [key, value] of Object.entries(row)) if (wanted.includes(normalizeHeader(key)) && value !== undefined && value !== null && String(value).trim() !== "") return value;
   return fallback;
 };
-const excelNumber = (value: unknown, fallback = 0) => { const normalized = String(value ?? "").replace(/[،,]/g, "").trim(); const number = Number(normalized); return Number.isFinite(number) ? number : fallback; };
+const excelNumber = (value: unknown, fallback = 0) => {
+  let normalized = normalizeDigits(value).trim().replace(/[،,]/g, "").replace(/٫/g, ".").replace(/\s/g, "");
+  if (normalized.includes(".") && normalized.lastIndexOf(".") < normalized.length - 4) normalized = normalized.replace(/\./g, "");
+  const number = Number(normalized.replace(/[^0-9.+-]/g, ""));
+  return Number.isFinite(number) ? number : fallback;
+};
 export async function importProductsFromExcel(file: File) {
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, raw: false });
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""];
-  if (!firstSheet) return [];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false, blankrows: false });
-  return rows.map((row, index) => ({
-    rowNumber: index + 2,
-    name: String(excelValue(row, ["اسم المنتج", "اسم الصنف", "المنتج", "name"])).trim(),
-    sku: String(excelValue(row, ["الكود", "كود المنتج", "SKU", "sku"])).trim(),
-    barcode: String(excelValue(row, ["الباركود", "Barcode", "barcode"])).trim() || undefined,
-    unit: String(excelValue(row, ["الوحدة", "unit"], "قطعة")).trim() || "قطعة",
-    location: String(excelValue(row, ["المكان", "الموقع", "location"], "المخزن")).trim() || "المخزن",
-    stockQty: Math.max(0, Math.trunc(excelNumber(excelValue(row, ["العدد", "الكمية", "stockQty"])))),
-    salePrice: String(excelValue(row, ["السعر", "سعر البيع", "salePrice"], "0")).trim() || "0",
-    minStock: Math.max(0, Math.trunc(excelNumber(excelValue(row, ["الحد الأدنى", "حد التنبيه", "minStock"]))))
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, raw: false, WTF: false });
+  const allRows: Array<{ row: Record<string, unknown>; rowNumber: number }> = [];
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false, blankrows: false });
+    rows.forEach((row, index) => allRows.push({ row, rowNumber: index + 2 }));
+  }
+  return allRows.map(({ row, rowNumber }) => ({
+    rowNumber,
+    name: String(excelValue(row, ["اسم المنتج", "اسم الصنف", "المنتج", "الصنف", "اسم", "name", "product"])).trim(),
+    sku: String(excelValue(row, ["الكود", "كود المنتج", "كود الصنف", "رقم الصنف", "SKU", "sku", "code"])).trim(),
+    barcode: String(excelValue(row, ["الباركود", "باركود", "Barcode", "barcode"])).trim() || undefined,
+    unit: String(excelValue(row, ["الوحدة", "وحدة القياس", "unit"], "قطعة")).trim() || "قطعة",
+    location: String(excelValue(row, ["المكان", "الموقع", "الفرع", "location"], "المخزن")).trim() || "المخزن",
+    stockQty: Math.max(0, Math.trunc(excelNumber(excelValue(row, ["العدد", "الكمية", "الرصيد", "المخزون", "stockQty", "quantity"])))),
+    salePrice: excelNumber(excelValue(row, ["السعر", "سعر البيع", "سعر الوحدة", "سعر", "salePrice", "price"]), 0).toFixed(2),
+    minStock: Math.max(0, Math.trunc(excelNumber(excelValue(row, ["الحد الأدنى", "حد التنبيه", "حد الطلب", "minStock", "minimum"]))))
   })).filter(row => row.name || row.sku);
 }
 

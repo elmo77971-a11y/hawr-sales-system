@@ -105,11 +105,11 @@ function isSQLiteDatabase(filename) {
     if (header !== "SQLite format 3\u0000") return false;
     const BetterSqlite3 = require("better-sqlite3");
     const db = new BetterSqlite3(filename, { readonly: true, fileMustExist: true });
-    const integrity = db.pragma("integrity_check", { simple: true });
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name);
+    const integrity = String(db.pragma("quick_check", { simple: true }) || "").toLowerCase();
+    const tableCount = Number(db.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table'").get()?.count || 0);
     db.close();
-    return integrity === "ok" && tables.includes("products") && tables.includes("sales") && tables.includes("users");
-  } catch { return false; }
+    return integrity === "ok" && tableCount > 0;
+  } catch (error) { console.warn("SQLite validation failed:", error?.message || error); return false; }
 }
 function checkpointDatabase() { try { const BetterSqlite3 = require("better-sqlite3"); const db = new BetterSqlite3(databasePath()); db.pragma("wal_checkpoint(TRUNCATE)"); db.close(); } catch (error) { console.warn("SQLite checkpoint skipped:", error?.message || error); } }
 function automaticBackupDirectory() { return readSettings().autoBackupDirectory || path.join(app.getPath("documents"), "Hawr Gallery Backups"); }
@@ -134,7 +134,10 @@ async function backupDatabase() {
   checkpointDatabase();
   const result = await dialog.showSaveDialog(mainWindow, { title: "حفظ نسخة احتياطية", defaultPath: path.join(app.getPath("documents"), `hawr-gallery-backup-${new Date().toISOString().slice(0, 10)}.sqlite`), filters: [{ name: "SQLite Database", extensions: ["sqlite"] }] });
   if (result.canceled || !result.filePath) return { success: false, canceled: true };
-  fs.copyFileSync(databasePath(), result.filePath);
+  const BetterSqlite3 = require("better-sqlite3");
+  const sourceDb = new BetterSqlite3(databasePath(), { readonly: true, fileMustExist: true });
+  await sourceDb.backup(result.filePath);
+  sourceDb.close();
   return { success: true, filePath: result.filePath };
 }
 async function resetDatabase() {
@@ -168,7 +171,10 @@ async function restoreDatabase() {
   if (localServer?.server) await new Promise(resolve => localServer.server.close(resolve));
   localServer = null;
   const temporary = `${databasePath()}.restore-${Date.now()}`;
-  fs.copyFileSync(source, temporary);
+  const BetterSqlite3 = require("better-sqlite3");
+  const sourceDb = new BetterSqlite3(source, { readonly: true, fileMustExist: true });
+  await sourceDb.backup(temporary);
+  sourceDb.close();
   fs.rmSync(`${databasePath()}-wal`, { force: true });
   fs.rmSync(`${databasePath()}-shm`, { force: true });
   fs.rmSync(databasePath(), { force: true });

@@ -15,7 +15,7 @@ export const appRouter = router({
   system: systemRouter,
   employees: router({
     list: adminProcedure.query(() => listEmployees()),
-    create: adminProcedure.input(z.object({ name: z.string().min(2).max(180), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40), role: z.enum(["user", "admin"]).default("user") })).mutation(({ input }) => createEmployee({ ...input, email: input.email || undefined })),
+    create: adminProcedure.input(z.object({ name: z.string().min(2).max(180), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40), password: z.string().min(6).max(200), salary: z.string().default("0"), role: z.enum(["user", "admin"]).default("user") })).mutation(({ input }) => createEmployee({ ...input, email: input.email || undefined })),
     update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().min(2).max(180).optional(), email: z.string().email().optional().or(z.literal("")), employeeCode: z.string().min(1).max(40).optional(), role: z.enum(["user", "admin"]).optional(), isActive: z.boolean().optional() })).mutation(({ input }) => { const { id, ...data } = input; return updateEmployee(id, { ...data, email: data.email || undefined }); }),
     resetCode: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => resetEmployeeCode(input.id)),
     delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteEmployee(input.id)),
@@ -34,7 +34,7 @@ export const appRouter = router({
   sales: router({
     list: protectedProcedure.query(() => listSales()),
     details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getSaleDetails(input.id)),
-    create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), customerId: z.number().int().positive().optional(), customerName: z.string().max(180).optional(), customerPhone: z.string().max(32).optional(), sellerId: z.number().int().positive().optional(), sellerCode: z.string().max(40).optional(), paidAmount: z.string(), paymentMethod: z.enum(["cash", "card", "transfer", "installment"]), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input, ctx }) => createSale({ ...input, sellerId: ctx.user.id, sellerCode: input.sellerCode || String(ctx.user.id) })),
+    create: protectedProcedure.input(z.object({ invoiceNo: z.string().min(1), customerId: z.number().int().positive().optional(), customerName: z.string().max(180).optional(), customerPhone: z.string().max(32).optional(), sellerId: z.number().int().positive().optional(), sellerCode: z.string().max(40).optional(), paidAmount: z.string(), paymentMethod: z.enum(["cash", "card", "transfer", "installment"]), items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), unitPrice: z.string(), discount: z.string().optional(), location: z.string().max(120).optional() })).min(1) })).mutation(({ input, ctx }) => createSale({ ...input, sellerId: ctx.user.id, sellerCode: input.sellerCode || String(ctx.user.id) })),
   }),
   purchases: router({
     list: protectedProcedure.query(() => listPurchaseItems()),
@@ -53,7 +53,7 @@ export const appRouter = router({
   dashboard: router({
     dailySummary: protectedProcedure.input(z.object({ from: z.coerce.date(), to: z.coerce.date() })).query(({ input }) => getDailySummary(input)),
   }),
-  reports: router({ summary: protectedProcedure.input(z.object({ from: z.string().optional(), to: z.string().optional(), sellerId: z.number().int().positive().optional() }).optional()).query(({ input }) => getReportSummary({ from: input?.from ? new Date(`${input.from}T00:00:00`) : undefined, to: input?.to ? new Date(`${input.to}T23:59:59.999`) : undefined, sellerId: input?.sellerId })), byEmployee: adminProcedure.input(z.object({ from: z.string().optional(), to: z.string().optional() }).optional()).query(({ input }) => getSalesByEmployee({ from: input?.from ? new Date(`${input.from}T00:00:00`) : undefined, to: input?.to ? new Date(`${input.to}T23:59:59.999`) : undefined })) }),
+  reports: router({ summary: protectedProcedure.input(z.object({ from: z.string().optional(), to: z.string().optional(), sellerId: z.number().int().positive().optional(), location: z.string().max(120).optional() }).optional()).query(({ input }) => getReportSummary({ from: input?.from ? new Date(`${input.from}T00:00:00`) : undefined, to: input?.to ? new Date(`${input.to}T23:59:59.999`) : undefined, sellerId: input?.sellerId, location: input?.location })), byEmployee: adminProcedure.input(z.object({ from: z.string().optional(), to: z.string().optional() }).optional()).query(({ input }) => getSalesByEmployee({ from: input?.from ? new Date(`${input.from}T00:00:00`) : undefined, to: input?.to ? new Date(`${input.to}T23:59:59.999`) : undefined })) }),
   sync: router({
     push: protectedProcedure.input(z.object({ operations: z.array(z.object({ id: z.string(), type: z.string(), payload: z.unknown(), createdAt: z.number() })) })).mutation(async ({ input }) => ({ accepted: await recordSyncOperations(input.operations), syncedAt: Date.now() })),
   }),
@@ -81,7 +81,7 @@ export const appRouter = router({
     search: protectedProcedure.input(z.object({ query: z.string().default("") })).query(async ({ input }) => {
       const rows = await listProducts();
       const q = input.query.trim().toLowerCase();
-      return q ? rows.filter((p: any) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) : rows;
+      return q ? rows.filter((p: any) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || String(p.barcode || '').toLowerCase().includes(q)) : rows;
     }),
   }),
 });

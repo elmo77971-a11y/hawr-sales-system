@@ -1,7 +1,7 @@
 import * as mysqlDb from "./db.mysql";
 import * as localDb from "./db.local";
 
-const useLocalDatabase = process.env.LOCAL_DESKTOP_MODE === "1" || Boolean(process.env.LOCAL_DB_PATH);
+const useLocalDatabase = process.env.LOCAL_DESKTOP_MODE === "1" || process.env.ELECTRON_MAIN_PROCESS === "1" || Boolean(process.env.LOCAL_DB_PATH);
 const implementation: Record<string, any> = useLocalDatabase ? localDb : mysqlDb;
 
 export const getDb = implementation.getDb;

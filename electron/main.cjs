@@ -132,7 +132,7 @@ function runAutomaticBackup() {
 async function backupDatabase() {
   if (!fs.existsSync(databasePath())) { await dialog.showMessageBox(mainWindow, { type: "warning", title: "لا توجد بيانات", message: "لم يتم إنشاء قاعدة بيانات بعد." }); return { success: false, canceled: false, error: "لا توجد قاعدة بيانات" }; }
   checkpointDatabase();
-  const result = await dialog.showSaveDialog(mainWindow, { title: "حفظ نسخة احتياطية", defaultPath: path.join(app.getPath("documents"), `hawr-gallery-backup-${new Date().toISOString().slice(0, 10)}.sqlite`), filters: [{ name: "SQLite Database", extensions: ["sqlite"] }] });
+  const result = await dialog.showSaveDialog(mainWindow, { title: "حفظ نسخة احتياطية", defaultPath: path.join(app.getPath("documents"), `hawr-gallery-backup-${new Date().toISOString().slice(0, 10)}.sqlite`), filters: [{ name: "SQLite Database", extensions: ["sqlite", "db", "bak"] }] });
   if (result.canceled || !result.filePath) return { success: false, canceled: true };
   const BetterSqlite3 = require("better-sqlite3");
   const sourceDb = new BetterSqlite3(databasePath(), { readonly: true, fileMustExist: true });
@@ -161,7 +161,7 @@ async function resetDatabase() {
 }
 
 async function restoreDatabase() {
-  const result = await dialog.showOpenDialog(mainWindow, { title: "استعادة نسخة احتياطية", properties: ["openFile"], filters: [{ name: "SQLite Database", extensions: ["sqlite", "db"] }] });
+  const result = await dialog.showOpenDialog(mainWindow, { title: "استعادة نسخة احتياطية", properties: ["openFile"], filters: [{ name: "SQLite Database", extensions: ["sqlite", "db", "bak"] }] });
   if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
   const source = result.filePaths[0];
   if (!isSQLiteDatabase(source)) { await dialog.showMessageBox(mainWindow, { type: "error", title: "ملف غير صالح", message: "الملف المحدد ليس قاعدة SQLite صالحة." }); return { success: false, error: "ملف SQLite غير صالح" }; }

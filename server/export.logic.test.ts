@@ -7,7 +7,7 @@ describe("export mappings", () => {
   });
 
   it("calculates the remaining amount in sales exports", () => {
-    expect(mapSalesForExport([{ invoiceNo: "INV-1", customerName: "أحمد", sellerCode: "S1", subtotal: "1000", paidAmount: "400", status: "partial", createdAt: "2026-08-27T09:00:00.000Z" }])[0]["المتبقي"]).toBe(600);
+    expect(mapSalesForExport([{ invoiceNo: "INV-1", customerName: "أحمد", sellerCode: "S1", sellerName: "أحمد علي", subtotal: "1000", paidAmount: "400", status: "partial", createdAt: "2026-08-27T09:00:00.000Z" }])[0]["المتبقي"]).toBe(600);
   });
 
   it("labels return supply movements without changing source quantities", () => {
@@ -16,4 +16,11 @@ describe("export mappings", () => {
     expect(row["الكمية"]).toBe(2);
     expect(row["الإجمالي"]).toBe(1000);
   });
+
+  it("exports the resolved seller name separately from the seller code", () => {
+    const [row] = mapSalesForExport([{ invoiceNo: "INV-2", customerName: "سارة", sellerCode: "EMP-2", sellerName: "محمود", subtotal: "50", paidAmount: "50", status: "paid", createdAt: "2026-08-27T09:00:00.000Z" }]);
+    expect(row["اسم البائع"]).toBe("محمود");
+    expect(row["كود البائع"]).toBe("EMP-2");
+  });
+
 });

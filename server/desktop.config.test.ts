@@ -9,10 +9,8 @@ describe("Windows desktop packaging", () => {
   it("includes the Hawr icon and optional signing configuration", () => {
     const packageJson = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/windows-desktop.yml");
-    expect(packageJson.version).toBe("1.7.2");
+    expect(packageJson.version).toBe("2.0.0");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
-    expect(packageJson.build.publish.provider).toBe("github");
-    expect(packageJson.build.publish.repo).toBe("hawr-sales-system");
     expect(packageJson.build.nsis.deleteAppDataOnUninstall).toBe(true);
     const installer = read("electron/installer.nsh");
     expect(installer).toContain('RMDir /r "$APPDATA\\hawr-sales-system"');
@@ -39,21 +37,20 @@ describe("Windows desktop packaging", () => {
     expect(gate).not.toContain("!status.data?.configured || desktopConfigured === false");
   });
 
-  it("contains a first-run wizard and secure LAN pairing route", () => {
+  it("contains a first-run wizard and a fully local runtime", () => {
     const main = read("electron/main.cjs");
     const setup = read("electron/setup.html");
     const server = read("server/_core/index.ts");
     const desktopServer = read("server/desktop-server.ts");
     expect(setup).toContain("completeSetup");
     expect(main).toContain("setupComplete");
-    expect(main).toContain("/__desktop/pair");
     expect(main).toContain('loadFile(path.join(__dirname, "loading.html"))');
     expect(main).toContain("showStartupError");
     expect(read("electron/loading.html")).toContain("جارٍ تشغيل النظام المحلي");
     expect(main).toContain("mainWindow.show()");
-    expect(main).toContain("autoUpdater.autoDownload = true");
-    expect(main).toContain("desktop-update-status");
-    expect(main).toContain("desktop-network-info");
+    expect(main).not.toContain("autoUpdater");
+    expect(main).not.toContain("desktop-update-status");
+    expect(main).not.toContain("desktop-network-info");
     expect(main).toContain("desktop-local-setup-state");
     expect(main).toContain("desktop-backup-database");
     expect(main).toContain("desktop-restore-database");
@@ -89,8 +86,9 @@ describe("Windows desktop packaging", () => {
     expect(routers).toContain("create: adminProcedure.input(z.object({ invoiceNo");
     expect(desktopServer).toContain('import { serveStatic } from "./_core/static"');
     expect(desktopServer).not.toContain('from "vite"');
-    expect(server).toContain("hawr_pair=approved");
-    expect(server).toContain("يلزم فتح رابط الربط");
+    expect(desktopServer).not.toContain("hawr_pair=approved");
+    expect(desktopServer).not.toContain("pairingToken");
+    expect(desktopServer).toContain('server.listen(port, "127.0.0.1"');
     expect(server).toContain('import { serveStatic } from "./static"');
     expect(server).toContain('const { setupVite } = await import("./vite")');
   });

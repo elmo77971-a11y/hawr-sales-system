@@ -25,7 +25,7 @@ function getLocalDb() {
   localDb.pragma("foreign_keys = ON");
   localDb.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, openId TEXT NOT NULL UNIQUE, name TEXT, email TEXT,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, openId TEXT NOT NULL UNIQUE, name TEXT, username TEXT UNIQUE, email TEXT,
       salary TEXT NOT NULL DEFAULT '0',
       loginMethod TEXT, role TEXT NOT NULL DEFAULT 'user', employeeCode TEXT UNIQUE, passwordHash TEXT, passwordSalt TEXT, isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, lastSignedIn TEXT NOT NULL
@@ -71,6 +71,9 @@ function getLocalDb() {
   `);
   try { localDb.exec("ALTER TABLE saleItems ADD COLUMN costPrice TEXT NOT NULL DEFAULT '0'"); } catch {}
   try { localDb.exec("ALTER TABLE users ADD COLUMN salary TEXT NOT NULL DEFAULT '0'"); } catch {}
+  try { localDb.exec("ALTER TABLE users ADD COLUMN username TEXT"); } catch {}
+  localDb.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username IS NOT NULL");
+  localDb.exec("UPDATE users SET username = employeeCode WHERE username IS NULL AND employeeCode IS NOT NULL");
   try { localDb.exec("ALTER TABLE users ADD COLUMN passwordHash TEXT"); } catch {}
   try { localDb.exec("ALTER TABLE users ADD COLUMN passwordSalt TEXT"); } catch {}
   try { localDb.exec("ALTER TABLE sales ADD COLUMN customerPhone TEXT"); } catch {}
@@ -110,19 +113,19 @@ export async function getLocalAuthStatus() {
   return { configured: Boolean(row), managerCode: row?.managerCode || null };
 }
 
-export async function createLocalManager(input: { name: string; managerCode: string; password: string }) {
+export async function createLocalManager(input: { name: string; username: string; password: string }) {
   const name = input.name.trim();
-  const managerCode = input.managerCode.trim();
+  const username = input.username.trim();
   if (name.length < 2) throw new Error("اسم المدير يجب أن يتكون من حرفين على الأقل");
-  if (!/^[A-Za-z0-9_-]{3,40}$/.test(managerCode)) throw new Error("كود المدير يجب أن يكون 3 أحرف أو أرقام على الأقل وبالإنجليزية");
+  if (!/^[A-Za-z0-9_.-]{3,40}$/.test(username)) throw new Error("اسم المستخدم يجب أن يكون 3 أحرف أو أرقام بالإنجليزية");
   if (input.password.length < 6) throw new Error("كلمة المرور يجب ألا تقل عن 6 أحرف");
   const result = transaction(db => {
     if (db.prepare("SELECT id FROM localAuth WHERE id = 1").get()) throw new Error("تم تسجيل المدير من قبل");
     const nowValue = now();
     const salt = createPasswordSalt();
-    const userResult = db.prepare(`INSERT INTO users (openId,name,email,employeeCode,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,1,'local-password',?,?,?)`).run(`local-manager-${crypto.randomUUID()}`, name, null, managerCode, "admin", nowValue, nowValue, nowValue);
+    const userResult = db.prepare(`INSERT INTO users (openId,name,username,email,employeeCode,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?, ?,1,'local-password',?,?,?)`).run(`local-manager-${crypto.randomUUID()}`, name, username, null, username, "admin", nowValue, nowValue, nowValue);
     const userId = Number(userResult.lastInsertRowid);
-    db.prepare("INSERT INTO localAuth (id,managerUserId,managerCode,passwordHash,passwordSalt,createdAt,updatedAt) VALUES (1,?,?,?,?,?,?)").run(userId, managerCode, hashPassword(input.password, salt), salt, nowValue, nowValue);
+    db.prepare("INSERT INTO localAuth (id,managerUserId,managerCode,passwordHash,passwordSalt,createdAt,updatedAt) VALUES (1,?,?,?,?,?,?)").run(userId, username, hashPassword(input.password, salt), salt, nowValue, nowValue);
     const token = createSessionToken();
     const expiresAt = new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString();
     db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), userId, nowValue, expiresAt);
@@ -152,14 +155,37 @@ export async function listLocalAuthEvents(limit = 200) {
   return getLocalDb().prepare("SELECT e.id,e.userId,e.eventType,e.name,e.employeeCode,e.success,e.reason,e.createdAt,u.role FROM localAuthEvents e LEFT JOIN users u ON u.id = e.userId ORDER BY e.createdAt DESC LIMIT ?").all(safeLimit).map((row: any) => ({ ...row, success: Boolean(row.success) }));
 }
 
-export async function loginLocalManager(input: { name: string; managerCode: string; password: string }) {
+export async function loginLocalUser(input: { username: string; password: string }) {
+  const username = input.username.trim();
+  if (!username || !input.password) throw new Error("اكتب اسم المستخدم وكلمة المرور");
+  const db = getLocalDb();
+  const user: any = db.prepare("SELECT * FROM users WHERE lower(trim(username)) = lower(trim(?)) AND isActive = 1 LIMIT 1").get(username);
+  if (!user) throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+  const auth: any = user.role === "admin" ? db.prepare("SELECT passwordSalt,passwordHash FROM localAuth WHERE managerUserId = ? LIMIT 1").get(user.id) : user;
+  if (!auth || !passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) {
+    recordAuthEvent({ eventType: "login", name: user.name, employeeCode: user.employeeCode, success: false, reason: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+    throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+  }
+  const timestamp = now();
+  const token = createSessionToken();
+  db.prepare("INSERT INTO localSessions (tokenHash,userId,createdAt,expiresAt) VALUES (?,?,?,?)").run(hashSessionToken(token), user.id, timestamp, new Date(Date.now() + LOCAL_SESSION_TTL_MS).toISOString());
+  db.prepare("UPDATE users SET lastSignedIn = ?, updatedAt = ? WHERE id = ?").run(timestamp, timestamp, user.id);
+  recordAuthEvent({ userId: user.id, eventType: "login", name: user.name, employeeCode: user.employeeCode, success: true });
+  return { token, user: publicUser({ ...user, lastSignedIn: timestamp }) };
+}
+
+export async function loginLocalManager(input: { username: string; password: string }) {
   const db = getLocalDb();
   const auth: any = db.prepare("SELECT * FROM localAuth WHERE id = 1 LIMIT 1").get();
   if (!auth) throw new Error("لم يتم تسجيل مدير لهذا البرنامج بعد");
   const user: any = db.prepare("SELECT * FROM users WHERE id = ? AND isActive = 1 LIMIT 1").get(auth.managerUserId);
-  if (!matchesLocalManager(user, input.name, input.managerCode) || !passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) {
-    recordAuthEvent({ eventType: "login", name: input.name, employeeCode: input.managerCode, success: false, reason: "بيانات المدير غير صحيحة" });
-    throw new Error("اسم المدير أو كوده أو كلمة المرور غير صحيحة");
+  if (!matchesLocalManager(user, input.username)) {
+    recordAuthEvent({ eventType: "login", name: user?.name, employeeCode: user?.employeeCode, success: false, reason: "اسم المستخدم غير صحيح" });
+    throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+  }
+  if (!passwordsMatch(input.password, auth.passwordSalt, auth.passwordHash)) {
+    recordAuthEvent({ eventType: "login", name: user.name, employeeCode: user.employeeCode, success: false, reason: "كلمة المرور غير صحيحة" });
+    throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
   }
   recordAuthEvent({ userId: user.id, eventType: "login", name: user.name, employeeCode: user.employeeCode, success: true });
   const token = createSessionToken();
@@ -169,15 +195,14 @@ export async function loginLocalManager(input: { name: string; managerCode: stri
   return { token, user: publicUser({ ...user, lastSignedIn: timestamp }) };
 }
 
-export async function loginLocalEmployee(input: { name: string; employeeCode: string; password: string }) {
-  const name = input.name.trim();
-  const employeeCode = input.employeeCode.trim();
-  if (name.length < 2 || employeeCode.length < 1 || !input.password) throw new Error("اكتب اسم الموظف وكوده وكلمة المرور");
+export async function loginLocalEmployee(input: { username: string; password: string }) {
+  const username = input.username.trim();
+  if (username.length < 1 || !input.password) throw new Error("اكتب اسم المستخدم وكلمة المرور");
   const db = getLocalDb();
-  const user: any = db.prepare("SELECT * FROM users WHERE employeeCode = ? AND lower(trim(name)) = lower(trim(?)) AND isActive = 1 LIMIT 1").get(employeeCode, name);
-  if (!matchesLocalEmployee(user, name, employeeCode) || (user.passwordHash && !passwordsMatch(input.password, user.passwordSalt, user.passwordHash))) {
-    recordAuthEvent({ eventType: "login", name, employeeCode, success: false, reason: "اسم الموظف أو الكود غير صحيح" });
-    throw new Error("اسم الموظف أو الكود غير صحيح");
+  const user: any = db.prepare("SELECT * FROM users WHERE lower(trim(username)) = lower(trim(?)) AND isActive = 1 LIMIT 1").get(username);
+  if (!matchesLocalEmployee(user, username) || !user.passwordHash || !passwordsMatch(input.password, user.passwordSalt, user.passwordHash)) {
+    recordAuthEvent({ eventType: "login", name: user?.name, employeeCode: user?.employeeCode, success: false, reason: "اسم المستخدم أو كلمة المرور غير صحيحين" });
+    throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
   }
   recordAuthEvent({ userId: user.id, eventType: "login", name: user.name, employeeCode: user.employeeCode, success: true });
   const token = createSessionToken();
@@ -207,11 +232,16 @@ export async function logoutLocalUser(token: string | undefined) {
 }
 export async function deleteLocalSession(token: string | undefined) { await logoutLocalUser(token); }
 
-export async function listEmployees() { return getLocalDb().prepare("SELECT id,name,email,employeeCode,role,salary,isActive,createdAt FROM users ORDER BY createdAt DESC").all().map((row: any) => ({ ...row, isActive: Boolean(row.isActive) })); }
-export async function createEmployee(input: { name: string; email?: string; employeeCode: string; password: string; salary?: string; role?: "user" | "supervisor" | "admin" }) {
+export async function listEmployees() { return getLocalDb().prepare("SELECT id,name,username,email,employeeCode,role,salary,isActive,createdAt FROM users ORDER BY createdAt DESC").all().map((row: any) => ({ ...row, isActive: Boolean(row.isActive) })); }
+export async function createEmployee(input: { name: string; username: string; email?: string; employeeCode?: string; password: string; salary?: string; role?: "user" | "supervisor" | "admin" }) {
   if (input.role === "admin") throw new Error("لا يمكن إنشاء مدير إضافي من شاشة الموظفين المحلية");
+  if (!input.username?.trim()) throw new Error("اسم المستخدم مطلوب");
   if (!input.password || input.password.length < 6) throw new Error("كلمة مرور الموظف يجب ألا تقل عن 6 أحرف");
-  const timestamp = now(); const salt = createPasswordSalt(); const result = getLocalDb().prepare(`INSERT INTO users (openId,name,email,employeeCode,passwordHash,passwordSalt,salary,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,?,?, ?,1,'employee-password',?,?,?)`).run(`employee-${input.employeeCode}-${Date.now()}`, input.name, input.email || null, input.employeeCode, hashPassword(input.password, salt), salt, input.salary || "0", input.role || "user", timestamp, timestamp, timestamp);
+  const db = getLocalDb();
+  let employeeCode = input.employeeCode?.trim() || "";
+  if (employeeCode && db.prepare("SELECT id FROM users WHERE employeeCode = ? OR username = ? LIMIT 1").get(employeeCode, input.username.trim())) throw new Error("اسم المستخدم أو كود الموظف مستخدم بالفعل");
+  if (!employeeCode) do { employeeCode = `EMP-${crypto.randomBytes(3).toString("hex").toUpperCase()}`; } while (db.prepare("SELECT id FROM users WHERE employeeCode = ? OR username = ? LIMIT 1").get(employeeCode, input.username.trim()));
+  const timestamp = now(); const salt = createPasswordSalt(); const result = db.prepare(`INSERT INTO users (openId,name,username,email,employeeCode,passwordHash,passwordSalt,salary,role,isActive,loginMethod,createdAt,updatedAt,lastSignedIn) VALUES (?,?,?,?,?,?,?, ?, ?,1,'employee-password',?,?,?)`).run(`employee-${employeeCode}-${Date.now()}`, input.name, input.username.trim(), input.email || null, employeeCode, hashPassword(input.password, salt), salt, input.salary || "0", input.role || "user", timestamp, timestamp, timestamp);
   return { success: true, id: Number(result.lastInsertRowid) };
 }
 export async function deleteEmployee(id: number) {
@@ -236,9 +266,9 @@ export async function resetEmployeeCode(id: number) {
   return { success: true, employeeCode: newCode };
 }
 
-export async function updateEmployee(id: number, input: { name?: string; email?: string; employeeCode?: string; role?: "user" | "supervisor" | "admin"; isActive?: boolean }) {
+export async function updateEmployee(id: number, input: { name?: string; username?: string; email?: string; employeeCode?: string; role?: "user" | "supervisor" | "admin"; isActive?: boolean }) {
   const fields: string[] = []; const values: unknown[] = [];
-  for (const key of ["name", "email", "employeeCode", "role"] as const) if (input[key] !== undefined) { fields.push(`${key} = ?`); values.push(input[key] || null); }
+  for (const key of ["name", "username", "email", "employeeCode", "role"] as const) if (input[key] !== undefined) { fields.push(`${key} = ?`); values.push(input[key] || null); }
   if (input.isActive !== undefined) { fields.push("isActive = ?"); values.push(input.isActive ? 1 : 0); }
   if (fields.length) getLocalDb().prepare(`UPDATE users SET ${fields.join(", ")}, updatedAt = ? WHERE id = ?`).run(...values, now(), id);
   return { success: true };

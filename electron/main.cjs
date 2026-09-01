@@ -1,22 +1,14 @@
 const { app, BrowserWindow, dialog, Menu, shell, clipboard, ipcMain } = require("electron");
-const { autoUpdater } = require("electron-updater");
-const QRCode = require("qrcode");
 const path = require("node:path");
 const fs = require("node:fs");
-const os = require("node:os");
 const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 
 let mainWindow;
 let setupWindow;
-let pairingWindow;
 let localServer;
-let pairingToken;
-let lanHost;
 let isQuitting = false;
 const isDailyBackupInvocation = process.argv.includes("--daily-backup");
-let updateConfigured = false;
-let updateState = { status: "idle", version: null, downloaded: false, error: null };
 
 const gotSingleInstanceLock = isDailyBackupInvocation ? true : app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) app.quit();
@@ -26,30 +18,8 @@ function databasePath() { return path.join(dataDirectory(), "hawr-gallery.sqlite
 function settingsPath() { return path.join(dataDirectory(), "desktop-settings.json"); }
 function readSettings() { try { return JSON.parse(fs.readFileSync(settingsPath(), "utf8")); } catch { return {}; } }
 function writeSettings(patch) { fs.mkdirSync(dataDirectory(), { recursive: true }); fs.writeFileSync(settingsPath(), JSON.stringify({ ...readSettings(), ...patch }, null, 2)); }
-function privateIPv4(address) { return /^(10|192\.168)\./.test(address) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(address); }
-function networkAddresses() { const addresses = []; for (const entries of Object.values(os.networkInterfaces())) for (const item of entries || []) if (item.family === "IPv4" && !item.internal && !addresses.includes(item.address)) addresses.push(item.address); return addresses.sort((a, b) => Number(privateIPv4(b)) - Number(privateIPv4(a))); }
-function localIPv4() { return networkAddresses()[0] || "127.0.0.1"; }
-function pairingUrl(port) { return `http://${lanHost}:${port}/__desktop/pair?token=${encodeURIComponent(pairingToken)}`; }
 function assetPath(name) { return path.join(app.getAppPath(), "assets", name); }
 function showStartupError(error) { const detail = error?.stack || String(error); console.error("Hawr Gallery startup failed:", detail); dialog.showErrorBox("تعذر تشغيل معرض حور", `${error?.message || String(error)}\n\nيمكنك إرسال هذه التفاصيل للدعم:\n${detail}`); }
-
-function publishUpdateState(next) {
-  updateState = { ...updateState, ...next };
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("desktop-update-status", updateState);
-}
-function configureAutoUpdater() {
-  if (updateConfigured || !app.isPackaged) return;
-  updateConfigured = true;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on("checking-for-update", () => publishUpdateState({ status: "checking", error: null }));
-  autoUpdater.on("update-available", info => publishUpdateState({ status: "available", version: info.version, error: null }));
-  autoUpdater.on("update-not-available", info => publishUpdateState({ status: "up-to-date", version: info.version, error: null }));
-  autoUpdater.on("download-progress", progress => publishUpdateState({ status: "downloading", percent: Math.round(progress.percent) }));
-  autoUpdater.on("update-downloaded", info => publishUpdateState({ status: "downloaded", version: info.version, downloaded: true, percent: 100, error: null }));
-  autoUpdater.on("error", error => publishUpdateState({ status: "error", error: error?.message || String(error) }));
-  void autoUpdater.checkForUpdates().catch(error => publishUpdateState({ status: "error", error: error?.message || String(error) }));
-}
 
 async function startLocalServer() {
   fs.mkdirSync(dataDirectory(), { recursive: true });
@@ -59,13 +29,11 @@ async function startLocalServer() {
   const preferredPort = Number(readSettings().lanPort) || 3688;
   process.env.PORT = String(preferredPort);
   process.env.ELECTRON_MAIN_PROCESS = "1";
-  pairingToken = crypto.randomBytes(18).toString("base64url");
-  lanHost = localIPv4();
   const bundledServer = path.join(app.getAppPath(), "dist", "desktop-server.js");
   if (!fs.existsSync(bundledServer)) throw new Error(`ملف تشغيل الخادم المحلي غير موجود: ${bundledServer}`);
   const serverModule = await import(pathToFileURL(bundledServer).href);
   if (typeof serverModule.startDesktopServer !== "function") throw new Error("تعذر العثور على startDesktopServer داخل حزمة البرنامج");
-  localServer = await serverModule.startDesktopServer({ host: "0.0.0.0", port: preferredPort, pairingToken });
+  localServer = await serverModule.startDesktopServer({ port: preferredPort });
   writeSettings({ lanPort: localServer.port });
   return localServer.port;
 }
@@ -88,10 +56,6 @@ ipcMain.handle("desktop-local-setup-state", () => {
   if (!fs.existsSync(databasePath())) return { configured: false };
   try { const BetterSqlite3 = require("better-sqlite3"); const db = new BetterSqlite3(databasePath(), { readonly: true }); const row = db.prepare("SELECT a.managerCode,u.id AS managerId,u.role,u.isActive FROM localAuth a LEFT JOIN users u ON u.id = a.managerUserId WHERE a.id = 1 LIMIT 1").get(); db.close(); return { configured: Boolean(row?.managerId && row.role === "admin" && row.isActive !== 0 && row.managerCode) }; } catch { return { configured: false }; }
 });
-ipcMain.handle("desktop-update-status", () => updateState);
-ipcMain.handle("desktop-update-install", () => { if (updateState.downloaded) { isQuitting = true; autoUpdater.quitAndInstall(false, true); return { success: true }; } return { success: false }; });
-ipcMain.handle("desktop-network-info", () => ({ host: lanHost, port: localServer?.port || null, addresses: networkAddresses(), url: localServer ? pairingUrl(localServer.port) : null }));
-ipcMain.handle("desktop-show-pairing", () => showPhoneLink());
 ipcMain.handle("desktop-backup-database", async () => { try { return await backupDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 ipcMain.handle("desktop-restore-database", async () => { try { return await restoreDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
 ipcMain.handle("desktop-reset-database", async () => { try { return await resetDatabase(); } catch (error) { return { success: false, error: error?.message || String(error) }; } });
@@ -185,23 +149,10 @@ async function restoreDatabase() {
   app.exit(0);
   return { success: true, requiresRestart: true };
 }
-function escapeHtml(value) { return String(value).replace(/[&<>\"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[character])); }
-async function showPhoneLink() {
-  if (!localServer) return dialog.showMessageBox(mainWindow, { type: "warning", title: "الخادم غير جاهز", message: "انتظر حتى يكتمل تشغيل البرنامج ثم أعد المحاولة." });
-  const url = pairingUrl(localServer.port);
-  clipboard.writeText(url);
-  const qr = await QRCode.toDataURL(url, { width: 280, margin: 1, errorCorrectionLevel: "M" });
-  if (pairingWindow && !pairingWindow.isDestroyed()) { pairingWindow.show(); pairingWindow.focus(); return { success: true, url }; }
-  pairingWindow = new BrowserWindow({ width: 540, height: 700, resizable: false, title: "ربط الهاتف عبر Wi‑Fi", icon: assetPath("hawr-icon.png"), webPreferences: { contextIsolation: true, nodeIntegration: false } });
-  pairingWindow.on("closed", () => { pairingWindow = null; });
-  const html = `<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>ربط الهاتف — معرض حور</title><style>body{margin:0;background:#f7f7f5;color:#0b1020;font-family:Segoe UI,Tahoma,sans-serif;text-align:center;padding:28px}h1{font-size:24px;margin:0 0 10px}p{color:#64748b;line-height:1.8}.card{background:#fff;padding:24px;border:1px solid #e5e7eb;box-shadow:0 12px 35px #0b10200f}.qr{width:280px;height:280px;margin:18px auto;image-rendering:pixelated}.url{direction:ltr;word-break:break-all;background:#f1f5f9;padding:12px;font-size:12px}.hint{color:#b91c1c;font-size:13px}</style><div class="card"><div style="font-size:40px;font-weight:900;color:#e30613">ح</div><h1>ربط الهاتف عبر Wi‑Fi</h1><p>اتصل الهاتف والكمبيوتر بنفس شبكة Wi‑Fi، ثم امسح رمز QR أو افتح الرابط يدويًا.</p><img class="qr" src="${qr}" alt="رمز الربط"><div class="url">${escapeHtml(url)}</div><p class="hint">إذا لم يفتح الرابط، أوقف بيانات الهاتف مؤقتًا وتأكد أن شبكة Windows مصنفة Private وأن جدار الحماية يسمح للبرنامج.</p></div></html>`;
-  await pairingWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-  return { success: true, url };
-}
 function createMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: "ملف", submenu: [{ label: "نسخ احتياطي للبيانات", click: backupDatabase }, { label: "استعادة نسخة احتياطية", click: restoreDatabase }, { type: "separator" }, { role: "quit", label: "إغلاق البرنامج" }] },
-    { label: "اتصال الهاتف", submenu: [{ label: "عرض QR ورابط الربط عبر Wi‑Fi", click: () => void showPhoneLink() }, { label: "فتح مجلد البيانات", click: () => shell.openPath(dataDirectory()) }] },
+    { label: "البيانات المحلية", submenu: [{ label: "فتح مجلد البيانات", click: () => shell.openPath(dataDirectory()) }] },
     { label: "مساعدة", submenu: [{ label: "حول معرض حور", click: () => dialog.showMessageBox(mainWindow, { type: "info", title: "معرض حور", message: "نظام إدارة المبيعات والمخزون يعمل محليًا على هذا الكمبيوتر." }) }] },
   ]));
 }
@@ -212,7 +163,7 @@ async function createMainWindow() {
   try {
     await mainWindow.loadFile(path.join(__dirname, "loading.html"));
     const port = await startLocalServer();
-    if (mainWindow && !mainWindow.isDestroyed()) { await mainWindow.loadURL(`http://127.0.0.1:${port}/`); createMenu(); mainWindow.show(); configureAutoUpdater(); }
+    if (mainWindow && !mainWindow.isDestroyed()) { await mainWindow.loadURL(`http://127.0.0.1:${port}/`); createMenu(); mainWindow.show(); }
   } catch (error) {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
     showStartupError(error);

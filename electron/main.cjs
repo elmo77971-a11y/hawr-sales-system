@@ -171,7 +171,13 @@ async function createMainWindow() {
   }
   return mainWindow;
 }
-async function launch() { await createMainWindow(); }
+async function launch() {
+  if (!readSettings().setupComplete || !fs.existsSync(databasePath())) {
+    createSetupWindow();
+    return;
+  }
+  await createMainWindow();
+}
 async function runDailyBackupAndExit() { try { const result = runAutomaticBackup(); if (!result.success && !result.skipped) writeSettings({ lastAutomaticBackupError: result.reason || "فشل النسخ التلقائي" }); } catch (error) { try { writeSettings({ lastAutomaticBackupError: error?.message || String(error) }); } catch {} } finally { app.quit(); } }
 
 if (gotSingleInstanceLock) {

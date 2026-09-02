@@ -9,7 +9,7 @@ describe("Windows desktop packaging", () => {
   it("includes the Hawr icon and optional signing configuration", () => {
     const packageJson = JSON.parse(read("package.json"));
     const workflow = read(".github/workflows/windows-desktop.yml");
-    expect(packageJson.version).toBe("2.0.0");
+    expect(packageJson.version).toBe("2.0.1");
     expect(packageJson.build.icon).toBe("assets/hawr-icon.ico");
     expect(packageJson.build.nsis.deleteAppDataOnUninstall).toBe(true);
     const installer = read("electron/installer.nsh");
@@ -63,7 +63,9 @@ describe("Windows desktop packaging", () => {
     expect(read("client/src/pages/Home.tsx")).toContain("النسخ التلقائي اليومي مفعّل");
     expect(main).toContain("const backup = await backupDatabase()");
     expect(main).toContain("app.relaunch()");
-    expect(main).toContain("async function launch() { await createMainWindow(); }");
+    expect(main).toContain("async function launch() {");
+    expect(main).toContain("if (!readSettings().setupComplete || !fs.existsSync(databasePath()))");
+    expect(main).toContain("createSetupWindow();");
     expect(main).not.toContain("if (!readSettings().setupComplete) createSetupWindow()");
     expect(main).toContain("isSQLiteDatabase");
     expect(read("electron/preload.cjs")).toContain("backupDatabase");
@@ -84,6 +86,9 @@ describe("Windows desktop packaging", () => {
     expect(routers).toContain("updateProduct: adminProcedure");
     expect(routers).toContain("deleteProduct: adminProcedure");
     expect(routers).toContain("create: adminProcedure.input(z.object({ invoiceNo");
+    expect(routers).toContain("collect: adminProcedure");
+    expect(read("client/src/pages/Home.tsx")).toContain("const protectedSections = [\"inventory\", \"purchases\", \"customers\", \"suppliers\", \"employees\", \"expenses\", \"reports\"]");
+    expect(read("client/src/pages/Home.tsx")).toContain("module === \"reports\" && isAdmin");
     expect(desktopServer).toContain('import { serveStatic } from "./_core/static"');
     expect(desktopServer).not.toContain('from "vite"');
     expect(desktopServer).not.toContain("hawr_pair=approved");
